@@ -12,14 +12,14 @@ const LOOP_SLIDER_SELECTORS = {
 } as const satisfies Record<string, readonly string[]>;
 
 const LOOP_SLIDER_CONFIG = {
-  baseScale: 0.8,
-  focusScale: 1,
+  baseScale: 0.82, // reduced to avoid full bleed
+  focusScale: 0.88, // max scale doesn't reach edges
   blurMax: 30, // Using blur to approximate frequency separation feel for now
   translateMax: 0,
-  lerp: 0.08,
+  lerp: 0.08, // faster snapping
   progressLerp: 0.12,
-  minOpacity: 0.2,
-  safeZoneBuffer: 32, // 3rem buffer outside the viewport
+  minOpacity: 0.7, // increased to prevent items looking completely gone
+  safeZoneBuffer: -32, // negative buffer pulls items into transition earlier
   initialOffset: 0.125, // 12.5% of viewport height starting "scrolled up"
 };
 
@@ -315,6 +315,9 @@ class LoopSliderInstance {
     slide.contentNode.style.transform = `scale(${slide.scale.toFixed(4)})`;
     slide.contentNode.style.opacity = opacity.toFixed(3);
 
+    const shadowOpacity = slide.progress * 0.4;
+    slide.contentNode.style.boxShadow = `0px 20px 120px 20px rgba(0, 0, 0, ${shadowOpacity.toFixed(3)})`;
+
     slide.focusNodes.forEach((target) => {
       const visibility = slide.progress;
       const blurValue = (1 - visibility) * this.config.blurMax;
@@ -469,11 +472,18 @@ class LoopSliderInstance {
       const activeDistance = Math.max(0, distance - plateau);
 
       // Transition over half the viewport height + buffer
-      const transitionDist = viewportHeight / 2 + buffer;
+      const transitionDist = viewportHeight / 2 + buffer - 1;
 
+      // We want items to grow much faster when they enter, so the exponent is smaller
+      // and we use a more aggressive clamping
       let scaleVisibility = 1 - activeDistance / transitionDist;
-      scaleVisibility = clamp(scaleVisibility, 0, 1);
-      scaleVisibility = Math.pow(scaleVisibility, 0.8); // slight curve
+
+      // Force it to reach 100% visibility (width) much earlier in its scroll journey
+      // Multiply by 2.5 so that it's 100% wide for the entire middle portion of its transition
+      scaleVisibility = clamp(scaleVisibility * 2.5, 0, 1);
+
+      // use an aggressive curve to puff them out quickly instead of shrinking linearly
+      scaleVisibility = Math.pow(scaleVisibility, 0.3);
 
       slide.targetProgress = scaleVisibility;
       slide.targetScale =
