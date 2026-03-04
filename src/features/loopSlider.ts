@@ -1,5 +1,5 @@
 import Lenis from 'lenis';
-
+import Snap from 'lenis/snap';
 const LOOP_SLIDER_SELECTORS = {
   root: ['[data-loop-slider="root"]', '.loop-slider-wrapper', '.slider-section'],
   track: ['[data-loop-slider="track"]', '.loop-slider-track'],
@@ -12,20 +12,23 @@ const LOOP_SLIDER_SELECTORS = {
 } as const satisfies Record<string, readonly string[]>;
 
 const LOOP_SLIDER_CONFIG = {
-  baseScale: 0.82, // reduced to avoid full bleed
-  focusScale: 0.88, // max scale doesn't reach edges
-  blurMax: 30, // Using blur to approximate frequency separation feel for now
+  baseScale: 0.6, // reduced to avoid full bleed
+  focusScale: 0.825, // max scale doesn't reach edges
+  blurMax: 100, // Using blur to approximate frequency separation feel for now
   translateMax: 0,
   lerp: 0.08, // faster snapping
   progressLerp: 0.12,
   minOpacity: 0.7, // increased to prevent items looking completely gone
   safeZoneBuffer: -32, // negative buffer pulls items into transition earlier
   initialOffset: 0.125, // 12.5% of viewport height starting "scrolled up"
+  bgBaseScale: 0.7, // larger than card's baseScale
+  bgFocusScale: 1.0, // much larger than card's 0.825 focusScale
 };
 
 type SlideState = {
   node: HTMLElement;
   contentNode: HTMLElement;
+  bgObjectNode: HTMLElement | null;
   blurNode: HTMLElement | null;
   focusNodes: HTMLElement[];
   progress: number;
@@ -48,14 +51,12 @@ const loopSliderInstances: LoopSliderInstance[] = [];
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const ensureLenisStyles = () => {
-  if (document.getElementById(LENIS_STYLE_ID)) {
-    return;
+  if (!document.getElementById(LENIS_STYLE_ID)) {
+    const style = document.createElement('style');
+    style.id = LENIS_STYLE_ID;
+    style.textContent = LENIS_STYLES;
+    document.head.appendChild(style);
   }
-
-  const style = document.createElement('style');
-  style.id = LENIS_STYLE_ID;
-  style.textContent = LENIS_STYLES;
-  document.head.appendChild(style);
 };
 
 const queryElementWithFallback = <T extends Element>(
@@ -166,9 +167,13 @@ class LoopSliderInstance {
   private trackElement: HTMLElement | null = null;
   private loopLists: HTMLElement[] = [];
   private localLenis: Lenis | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private localSnap: any | null = null;
   private localLenisRaf: number | null = null;
   private handleLenisScroll?: () => void;
+  private virtualScrollHandler?: (data: { deltaY: number; event: WheelEvent | TouchEvent }) => void;
   private mostVisibleSlide: SlideState | null = null;
+  private isAnimatingSnap = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -203,11 +208,18 @@ class LoopSliderInstance {
     if (this.handleLenisScroll && this.localLenis) {
       this.localLenis.off('scroll', this.handleLenisScroll);
     }
+    if (this.virtualScrollHandler && this.localLenis) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.localLenis.off('virtual-scroll', this.virtualScrollHandler as any);
+    }
 
     if (this.localLenisRaf !== null) {
       window.cancelAnimationFrame(this.localLenisRaf);
       this.localLenisRaf = null;
     }
+
+    this.localSnap?.destroy();
+    this.localSnap = null;
 
     this.localLenis?.destroy();
     this.localLenis = null;
@@ -250,7 +262,8 @@ class LoopSliderInstance {
       smoothWheel: true,
       infinite: true,
       syncTouch: true,
-      touchMultiplier: 0.65,
+      touchMultiplier: 1.5, // Moderated from 2.0 to prevent flying too far
+      wheelMultiplier: 1.2, // Moderated from 1.5
     });
 
     this.handleLenisScroll = () => {
@@ -258,6 +271,20 @@ class LoopSliderInstance {
     };
 
     this.localLenis.on('scroll', this.handleLenisScroll);
+
+    // --- Native Physics Snapping (lenis/snap) ---
+    // Lenis Snap extends the physics deceleration curve directly to the target
+    // without killing momentum or firing disparate animations.
+    this.localSnap = new Snap(this.localLenis, {
+      type: 'mandatory',
+      duration: 0.6,
+      easing: (t: number) => 1 - Math.pow(1 - t, 3), // Cubic ease-out
+    });
+
+    // Register all slides as snap points
+    this.slides.forEach((slide) => {
+      this.localSnap?.addElement(slide.node as HTMLElement, { align: 'center' });
+    });
 
     const raf = (time: number) => {
       this.localLenis?.raf(time);
@@ -274,6 +301,7 @@ class LoopSliderInstance {
       node,
       contentNode:
         queryElementWithFallback<HTMLElement>(node, LOOP_SLIDER_SELECTORS.content) ?? node,
+      bgObjectNode: node.querySelector<HTMLElement>('.bg-object'),
       blurNode: queryElementWithFallback<HTMLElement>(node, LOOP_SLIDER_SELECTORS.blur),
       focusNodes: (() => {
         const focusTargets: HTMLElement[] = [];
@@ -303,9 +331,14 @@ class LoopSliderInstance {
 
     this.slides.forEach((slide) => {
       const content = slide.contentNode;
-      content.style.willChange = 'transform, opacity, filter';
+      content.style.willChange = 'transform, opacity, filter, mix-blend-mode';
       content.style.transformOrigin = 'center center';
       content.style.position = content.style.position || 'relative';
+
+      if (slide.bgObjectNode) {
+        slide.bgObjectNode.style.willChange = 'transform';
+        slide.bgObjectNode.style.transformOrigin = 'center center';
+      }
     });
   }
 
@@ -315,18 +348,31 @@ class LoopSliderInstance {
     slide.contentNode.style.transform = `scale(${slide.scale.toFixed(4)})`;
     slide.contentNode.style.opacity = opacity.toFixed(3);
 
+    if (slide.bgObjectNode) {
+      const bgScale =
+        this.config.bgBaseScale +
+        (this.config.bgFocusScale - this.config.bgBaseScale) * slide.progress;
+
+      // Only scaling applied; Webflow native styles determine positioning/blur
+      slide.bgObjectNode.style.transform = `scale(${bgScale.toFixed(4)})`;
+    }
+
     const shadowOpacity = slide.progress * 0.4;
     slide.contentNode.style.boxShadow = `0px 20px 120px 20px rgba(0, 0, 0, ${shadowOpacity.toFixed(3)})`;
 
     slide.focusNodes.forEach((target) => {
       const visibility = slide.progress;
+
       const blurValue = (1 - visibility) * this.config.blurMax;
-      target.style.filter = `blur(${blurValue.toFixed(2)}px)`;
+      const xRayIntensity = (1 - visibility) * 100;
+
+      // We apply desaturation (grayscale) and inversion simultaneously with the blur
+      // to create a smooth, low-saturation x-ray effect that avoids 'difference' harshness
+      target.style.filter = `blur(${blurValue.toFixed(2)}px) grayscale(${xRayIntensity.toFixed(1)}%) invert(${xRayIntensity.toFixed(1)}%)`;
     });
 
     if (slide.blurNode) {
       slide.blurNode.style.opacity = (1 - slide.progress).toFixed(3);
-      // Removed filter here relying purely on focus nodes for the image
     }
   }
 
