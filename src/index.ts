@@ -1,6 +1,7 @@
 import { greetUser } from '$utils/greet';
 
 import { initLoopSlider } from './features/loopSlider';
+import { initVideoPlayers } from './features/videoPlayer';
 
 window.Webflow ||= [];
 window.Webflow.push(() => {
@@ -8,4 +9,5 @@ window.Webflow.push(() => {
   greetUser(name);
 
   initLoopSlider();
+  initVideoPlayers();
 });
