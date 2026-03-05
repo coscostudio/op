@@ -98,21 +98,15 @@ let activeItemTransitioning = false;
  */
 const applyActiveDetails = (source: HTMLElement): boolean => {
   const targetNormal = document.querySelector('.list-title-normal');
-  const targetSuper = document.querySelector('.list-title-super');
 
-  if (!targetNormal || !targetSuper || !source) return false;
+  if (!targetNormal || !source) return false;
 
   const sourceTitle = source.querySelector('.cms-homepage-title')?.textContent?.trim() || '';
-  const sourceSuper = source.querySelector('.cms-homepage-super')?.textContent?.trim() || '';
 
   let titleChanged = false;
 
   if (targetNormal.textContent !== sourceTitle) {
     targetNormal.textContent = sourceTitle;
-    titleChanged = true;
-  }
-  if (targetSuper.textContent !== sourceSuper) {
-    targetSuper.textContent = sourceSuper;
     titleChanged = true;
   }
 
@@ -172,14 +166,11 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
 
   // Check if content actually differs before animating
   const targetNormal = document.querySelector<HTMLElement>('.list-title-normal');
-  const targetSuper = document.querySelector<HTMLElement>('.list-title-super');
-  if (!targetNormal || !targetSuper) return false;
+  if (!targetNormal) return false;
 
   const sourceTitle = source.querySelector('.cms-homepage-title')?.textContent?.trim() || '';
-  const sourceSuper = source.querySelector('.cms-homepage-super')?.textContent?.trim() || '';
 
-  const titleSame =
-    targetNormal.textContent === sourceTitle && targetSuper.textContent === sourceSuper;
+  const titleSame = targetNormal.textContent === sourceTitle;
 
   // Also check services
   const servicesOut = document.querySelector('.activeitem-services-list');
@@ -228,10 +219,6 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
     targetNormal.style.transition = 'none';
     targetNormal.style.opacity = '0';
   }
-  if (targetSuper) {
-    targetSuper.style.transition = 'none';
-    targetSuper.style.opacity = '0';
-  }
 
   // Swap content
   applyActiveDetails(source);
@@ -255,10 +242,6 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
   if (targetNormal) {
     targetNormal.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
     targetNormal.style.opacity = '1';
-  }
-  if (targetSuper) {
-    targetSuper.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
-    targetSuper.style.opacity = '1';
   }
 
   const cleanup = (e: TransitionEvent) => {
