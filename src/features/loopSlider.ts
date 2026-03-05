@@ -14,7 +14,7 @@ const LOOP_SLIDER_SELECTORS = {
 const LOOP_SLIDER_CONFIG = {
   baseScale: 0.6, // reduced to avoid full bleed
   focusScale: 0.825, // max scale doesn't reach edges
-  blurMax: 100, // Using blur to approximate frequency separation feel for now
+  blurMax: 100, // blur on enter/leave
   translateMax: 0,
   lerp: 0.08, // faster snapping
   progressLerp: 0.12,
