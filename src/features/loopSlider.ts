@@ -265,12 +265,13 @@ class LoopSliderInstance {
 
     this.localLenis.on('scroll', this.handleLenisScroll);
 
-    // Mandatory snap: always snaps to the nearest card when scrolling slows down.
-    // Short debounce = snap kicks in quickly, but you still get fluid momentum.
+    // Lock snap: always snaps in the scroll direction (forward), not back to closest.
+    // Only a tiny incidental nudge would snap back.
     this.localSnap = new Snap(this.localLenis, {
-      type: 'mandatory',
+      type: 'lock',
       duration: 0.33,
       debounce: 33,
+      distanceThreshold: 99999, // Always snap, no matter how far the next card is
       easing: (t: number) => 1 - Math.pow(1 - t, 3),
     });
 
