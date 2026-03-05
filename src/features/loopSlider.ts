@@ -20,14 +20,11 @@ const LOOP_SLIDER_CONFIG = {
   progressLerp: 0.12,
   minOpacity: 0.5, // increased to prevent items looking completely gone
   safeZoneBuffer: -32, // negative buffer pulls items into transition earlier
-  bgBaseScale: 0.5, // larger than card's baseScale
-  bgFocusScale: 0.85, //  larger than card's focusScale
 };
 
 type SlideState = {
   node: HTMLElement;
   contentNode: HTMLElement;
-  bgObjectNode: HTMLElement | null;
   blurNode: HTMLElement | null;
   focusNodes: HTMLElement[];
   progress: number;
@@ -414,7 +411,6 @@ class LoopSliderInstance {
       node,
       contentNode:
         queryElementWithFallback<HTMLElement>(node, LOOP_SLIDER_SELECTORS.content) ?? node,
-      bgObjectNode: node.querySelector<HTMLElement>('.bg-object'),
       blurNode: queryElementWithFallback<HTMLElement>(node, LOOP_SLIDER_SELECTORS.blur),
       focusNodes: (() => {
         const focusTargets: HTMLElement[] = [];
@@ -447,11 +443,6 @@ class LoopSliderInstance {
       content.style.willChange = 'transform, opacity, filter, mix-blend-mode';
       content.style.transformOrigin = 'center center';
       content.style.position = content.style.position || 'relative';
-
-      if (slide.bgObjectNode) {
-        slide.bgObjectNode.style.willChange = 'transform';
-        slide.bgObjectNode.style.transformOrigin = 'center center';
-      }
     });
   }
 
@@ -460,18 +451,6 @@ class LoopSliderInstance {
 
     slide.contentNode.style.transform = `scale(${slide.scale.toFixed(4)})`;
     slide.contentNode.style.opacity = opacity.toFixed(3);
-
-    if (slide.bgObjectNode) {
-      const bgScale =
-        this.config.bgBaseScale +
-        (this.config.bgFocusScale - this.config.bgBaseScale) * slide.progress;
-
-      // Only scaling applied; Webflow native styles determine positioning/blur
-      slide.bgObjectNode.style.transform = `scale(${bgScale.toFixed(4)})`;
-    }
-
-    const shadowOpacity = slide.progress * 0.15;
-    slide.contentNode.style.boxShadow = `0px 20px 120px 20px rgba(0, 0, 0, ${shadowOpacity.toFixed(3)})`;
 
     slide.focusNodes.forEach((target) => {
       const visibility = slide.progress;

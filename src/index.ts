@@ -13,6 +13,7 @@ const REVEAL_MAP: Record<string, string> = {
   '.logo-container': 'block',
   '.nav': 'flex',
   '.activeitem-title': 'block',
+  '.home-blurb': 'block',
 };
 
 const FADE_DURATION = '0.5s';
@@ -31,26 +32,29 @@ function revealHiddenElements() {
 
   if (!entries.length) return;
 
-  // Phase 1: make elements layout-visible (they're already opacity:0 from Webflow CSS)
+  // Phase 1: make elements layout-visible but keep them explicitly hidden during the delay
   for (const { el, display } of entries) {
-    el.style.display = display;
+    el.style.setProperty('opacity', '0', 'important');
+    el.style.setProperty('display', display, 'important');
   }
 
-  // Phase 2: next frame — apply transition and fade in
-  requestAnimationFrame(() => {
-    for (const { el } of entries) {
-      el.style.transition = `opacity ${FADE_DURATION} ease`;
-      el.style.opacity = '1';
+  // Phase 2: wait 750ms — apply transition and fade in
+  setTimeout(() => {
+    requestAnimationFrame(() => {
+      for (const { el } of entries) {
+        el.style.setProperty('transition', `opacity ${FADE_DURATION} ease`, 'important');
+        el.style.setProperty('opacity', '1', 'important');
 
-      el.addEventListener(
-        'transitionend',
-        () => {
-          el.style.removeProperty('transition');
-        },
-        { once: true }
-      );
-    }
-  });
+        el.addEventListener(
+          'transitionend',
+          () => {
+            el.style.removeProperty('transition');
+          },
+          { once: true }
+        );
+      }
+    });
+  }, 750);
 }
 
 window.Webflow ||= [];
