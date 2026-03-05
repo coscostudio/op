@@ -12,17 +12,16 @@ const LOOP_SLIDER_SELECTORS = {
 } as const satisfies Record<string, readonly string[]>;
 
 const LOOP_SLIDER_CONFIG = {
-  baseScale: 0.6, // reduced to avoid full bleed
+  baseScale: 0.4, // reduced to avoid full bleed
   focusScale: 0.825, // max scale doesn't reach edges
   blurMax: 100, // blur on enter/leave
   translateMax: 0,
   lerp: 0.08, // faster snapping
   progressLerp: 0.12,
-  minOpacity: 0.7, // increased to prevent items looking completely gone
+  minOpacity: 0.5, // increased to prevent items looking completely gone
   safeZoneBuffer: -32, // negative buffer pulls items into transition earlier
-  initialOffset: 0.125, // 12.5% of viewport height starting "scrolled up"
-  bgBaseScale: 0.7, // larger than card's baseScale
-  bgFocusScale: 1.0, // much larger than card's 0.825 focusScale
+  bgBaseScale: 0.5, // larger than card's baseScale
+  bgFocusScale: 0.85, //  larger than card's focusScale
 };
 
 type SlideState = {
@@ -171,9 +170,7 @@ class LoopSliderInstance {
   private localSnap: any | null = null;
   private localLenisRaf: number | null = null;
   private handleLenisScroll?: () => void;
-  private virtualScrollHandler?: (data: { deltaY: number; event: WheelEvent | TouchEvent }) => void;
   private mostVisibleSlide: SlideState | null = null;
-  private isAnimatingSnap = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -197,20 +194,16 @@ class LoopSliderInstance {
     this.primaryList.style.opacity = '0';
     this.primaryList.style.transition = 'opacity 0.4s ease-out';
 
+    this.collectSlides();
+
     if (this.prefersInfinite) {
       this.initLocalLenis();
     }
-
-    this.collectSlides();
   }
 
   public destroy() {
     if (this.handleLenisScroll && this.localLenis) {
       this.localLenis.off('scroll', this.handleLenisScroll);
-    }
-    if (this.virtualScrollHandler && this.localLenis) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.localLenis.off('virtual-scroll', this.virtualScrollHandler as any);
     }
 
     if (this.localLenisRaf !== null) {
@@ -262,8 +255,8 @@ class LoopSliderInstance {
       smoothWheel: true,
       infinite: true,
       syncTouch: true,
-      touchMultiplier: 1.5, // Moderated from 2.0 to prevent flying too far
-      wheelMultiplier: 1.2, // Moderated from 1.5
+      touchMultiplier: 1.66,
+      wheelMultiplier: 1.66, // Lower = less travel per gesture before snap kicks in
     });
 
     this.handleLenisScroll = () => {
@@ -272,18 +265,18 @@ class LoopSliderInstance {
 
     this.localLenis.on('scroll', this.handleLenisScroll);
 
-    // --- Native Physics Snapping (lenis/snap) ---
-    // Lenis Snap extends the physics deceleration curve directly to the target
-    // without killing momentum or firing disparate animations.
+    // Mandatory snap: always snaps to the nearest card when scrolling slows down.
+    // Short debounce = snap kicks in quickly, but you still get fluid momentum.
     this.localSnap = new Snap(this.localLenis, {
       type: 'mandatory',
-      duration: 0.6,
-      easing: (t: number) => 1 - Math.pow(1 - t, 3), // Cubic ease-out
+      duration: 0.33,
+      debounce: 33,
+      easing: (t: number) => 1 - Math.pow(1 - t, 3),
     });
 
-    // Register all slides as snap points
+    // Register all slides as snap points (center-aligned)
     this.slides.forEach((slide) => {
-      this.localSnap?.addElement(slide.node as HTMLElement, { align: 'center' });
+      this.localSnap?.addElement(slide.node as HTMLElement, { align: ['center'] });
     });
 
     const raf = (time: number) => {
@@ -357,7 +350,7 @@ class LoopSliderInstance {
       slide.bgObjectNode.style.transform = `scale(${bgScale.toFixed(4)})`;
     }
 
-    const shadowOpacity = slide.progress * 0.4;
+    const shadowOpacity = slide.progress * 0.15;
     slide.contentNode.style.boxShadow = `0px 20px 120px 20px rgba(0, 0, 0, ${shadowOpacity.toFixed(3)})`;
 
     slide.focusNodes.forEach((target) => {

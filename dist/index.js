@@ -1501,7 +1501,7 @@
     media: ['[data-loop-slider="focus"]', ".home-project-card"]
   };
   var LOOP_SLIDER_CONFIG = {
-    baseScale: 0.6,
+    baseScale: 0.4,
     // reduced to avoid full bleed
     focusScale: 0.825,
     // max scale doesn't reach edges
@@ -1511,16 +1511,14 @@
     lerp: 0.08,
     // faster snapping
     progressLerp: 0.12,
-    minOpacity: 0.7,
+    minOpacity: 0.5,
     // increased to prevent items looking completely gone
     safeZoneBuffer: -32,
     // negative buffer pulls items into transition earlier
-    initialOffset: 0.125,
-    // 12.5% of viewport height starting "scrolled up"
-    bgBaseScale: 0.7,
+    bgBaseScale: 0.5,
     // larger than card's baseScale
-    bgFocusScale: 1
-    // much larger than card's 0.825 focusScale
+    bgFocusScale: 0.85
+    //  larger than card's focusScale
   };
   var LENIS_STYLE_ID = "loop-slider-lenis-styles";
   var LENIS_STYLES = "html.lenis,html.lenis body{height:auto}.lenis:not(.lenis-autoToggle).lenis-stopped{overflow:clip}.lenis [data-lenis-prevent],.lenis [data-lenis-prevent-wheel],.lenis [data-lenis-prevent-touch]{overscroll-behavior:contain}.lenis.lenis-smooth iframe{pointer-events:none}.lenis.lenis-autoToggle{transition-property:overflow;transition-duration:1ms;transition-behavior:allow-discrete}";
@@ -1625,9 +1623,7 @@
     localSnap = null;
     localLenisRaf = null;
     handleLenisScroll;
-    virtualScrollHandler;
     mostVisibleSlide = null;
-    isAnimatingSnap = false;
     constructor(root) {
       this.root = root;
       this.prefersInfinite = root.dataset.loopSliderInfinite !== "false";
@@ -1644,17 +1640,14 @@
       this.prepareLoopLists(track);
       this.primaryList.style.opacity = "0";
       this.primaryList.style.transition = "opacity 0.4s ease-out";
+      this.collectSlides();
       if (this.prefersInfinite) {
         this.initLocalLenis();
       }
-      this.collectSlides();
     }
     destroy() {
       if (this.handleLenisScroll && this.localLenis) {
         this.localLenis.off("scroll", this.handleLenisScroll);
-      }
-      if (this.virtualScrollHandler && this.localLenis) {
-        this.localLenis.off("virtual-scroll", this.virtualScrollHandler);
       }
       if (this.localLenisRaf !== null) {
         window.cancelAnimationFrame(this.localLenisRaf);
@@ -1693,10 +1686,9 @@
         smoothWheel: true,
         infinite: true,
         syncTouch: true,
-        touchMultiplier: 1.5,
-        // Moderated from 2.0 to prevent flying too far
-        wheelMultiplier: 1.2
-        // Moderated from 1.5
+        touchMultiplier: 1.66,
+        wheelMultiplier: 1.66
+        // Lower = less travel per gesture before snap kicks in
       });
       this.handleLenisScroll = () => {
         this.measure();
@@ -1704,12 +1696,12 @@
       this.localLenis.on("scroll", this.handleLenisScroll);
       this.localSnap = new Snap(this.localLenis, {
         type: "mandatory",
-        duration: 0.6,
+        duration: 0.33,
+        debounce: 33,
         easing: (t) => 1 - Math.pow(1 - t, 3)
-        // Cubic ease-out
       });
       this.slides.forEach((slide) => {
-        this.localSnap?.addElement(slide.node, { align: "center" });
+        this.localSnap?.addElement(slide.node, { align: ["center"] });
       });
       const raf = (time) => {
         this.localLenis?.raf(time);
@@ -1768,7 +1760,7 @@
         const bgScale = this.config.bgBaseScale + (this.config.bgFocusScale - this.config.bgBaseScale) * slide.progress;
         slide.bgObjectNode.style.transform = `scale(${bgScale.toFixed(4)})`;
       }
-      const shadowOpacity = slide.progress * 0.4;
+      const shadowOpacity = slide.progress * 0.15;
       slide.contentNode.style.boxShadow = `0px 20px 120px 20px rgba(0, 0, 0, ${shadowOpacity.toFixed(3)})`;
       slide.focusNodes.forEach((target) => {
         const visibility = slide.progress;
