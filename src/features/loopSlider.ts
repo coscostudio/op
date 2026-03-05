@@ -91,8 +91,15 @@ const getLoopSliderRoots = () => {
   return roots.filter((root) => queryElementWithFallback(root, LOOP_SLIDER_SELECTORS.list));
 };
 
-// Function extracted from the activeitem script inside HTML
-const updateActiveDetailsFromSource = (source: HTMLElement) => {
+// Transition config for the activeitem morph
+const ACTIVE_MORPH_MS = 400;
+let activeItemTransitioning = false;
+
+/**
+ * Apply the actual DOM changes for the active item details.
+ * Returns true if anything changed.
+ */
+const applyActiveDetails = (source: HTMLElement): boolean => {
   const targetNormal = document.querySelector('.list-title-normal');
   const targetSuper = document.querySelector('.list-title-super');
 
@@ -101,11 +108,15 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
   const sourceTitle = source.querySelector('.cms-homepage-title')?.textContent?.trim() || '';
   const sourceSuper = source.querySelector('.cms-homepage-super')?.textContent?.trim() || '';
 
+  let titleChanged = false;
+
   if (targetNormal.textContent !== sourceTitle) {
     targetNormal.textContent = sourceTitle;
+    titleChanged = true;
   }
   if (targetSuper.textContent !== sourceSuper) {
     targetSuper.textContent = sourceSuper;
+    titleChanged = true;
   }
 
   // Services: rebuild the visible list from the CMS nested list
@@ -119,20 +130,19 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
     )
   );
 
-  // If labels are exactly the same, avoid DOM thrashing
-  let changed = false;
+  let servicesChanged = false;
   if (visibleLabels.size !== incomingLabels.size) {
-    changed = true;
+    servicesChanged = true;
   } else {
     for (const label of incomingLabels) {
       if (!visibleLabels.has(label)) {
-        changed = true;
+        servicesChanged = true;
         break;
       }
     }
   }
 
-  if (changed && servicesOut) {
+  if (servicesChanged && servicesOut) {
     servicesOut.innerHTML = '';
     incomingLabels.forEach((label) => {
       if (!label) return;
@@ -147,6 +157,139 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
       servicesOut.appendChild(li);
     });
   }
+
+  return titleChanged || servicesChanged;
+};
+
+/**
+ * Morph the .activeitem-title container when content changes.
+ * Uses a FLIP-style technique to smoothly animate width and height.
+ */
+const updateActiveDetailsFromSource = (source: HTMLElement) => {
+  const container = document.querySelector<HTMLElement>('.activeitem-title');
+
+  // If no animated container, fall back to direct swap
+  if (!container) {
+    return applyActiveDetails(source);
+  }
+
+  // Check if content actually differs before animating
+  const targetNormal = document.querySelector<HTMLElement>('.list-title-normal');
+  const targetSuper = document.querySelector<HTMLElement>('.list-title-super');
+  if (!targetNormal || !targetSuper) return false;
+
+  const sourceTitle = source.querySelector('.cms-homepage-title')?.textContent?.trim() || '';
+  const sourceSuper = source.querySelector('.cms-homepage-super')?.textContent?.trim() || '';
+
+  const titleSame =
+    targetNormal.textContent === sourceTitle && targetSuper.textContent === sourceSuper;
+
+  // Also check services
+  const servicesOut = document.querySelector('.activeitem-services-list');
+  const visibleLabels = new Set(
+    Array.from(servicesOut?.children || []).map((li) => li.textContent?.trim())
+  );
+  const incomingLabels = new Set(
+    Array.from(source.querySelectorAll('.active-services-source-item')).map(
+      (item) => item.textContent?.trim() || ''
+    )
+  );
+  let servicesSame = visibleLabels.size === incomingLabels.size;
+  if (servicesSame) {
+    for (const label of incomingLabels) {
+      if (!visibleLabels.has(label)) {
+        servicesSame = false;
+        break;
+      }
+    }
+  }
+
+  // Nothing changed — skip
+  if (titleSame && servicesSame) return false;
+
+  // If already mid-transition, cancel and finish previous immediately
+  if (activeItemTransitioning) {
+    container.style.transition = 'none';
+    container.style.width = '';
+    container.style.height = '';
+    activeItemTransitioning = false;
+  }
+
+  activeItemTransitioning = true;
+
+  // First: measure current size
+  container.style.transition = 'none';
+  container.style.width = '';
+  container.style.height = '';
+  // ensure we don't flash overflowing content during measurement/animation
+  container.style.overflow = 'hidden';
+
+  const firstRect = container.getBoundingClientRect();
+
+  // Prepare text elements for fade
+  if (targetNormal) {
+    targetNormal.style.transition = 'none';
+    targetNormal.style.opacity = '0';
+  }
+  if (targetSuper) {
+    targetSuper.style.transition = 'none';
+    targetSuper.style.opacity = '0';
+  }
+
+  // Swap content
+  applyActiveDetails(source);
+
+  // Last: measure new size
+  const lastRect = container.getBoundingClientRect();
+
+  // Invert: forcefully set back to old size
+  container.style.width = `${firstRect.width}px`;
+  container.style.height = `${firstRect.height}px`;
+
+  // Force reflow
+  void container.offsetHeight;
+
+  // Play: transition to new size
+  container.style.transition = `width ${ACTIVE_MORPH_MS}ms cubic-bezier(0.25, 1, 0.5, 1), height ${ACTIVE_MORPH_MS}ms cubic-bezier(0.25, 1, 0.5, 1)`;
+  container.style.width = `${lastRect.width}px`;
+  container.style.height = `${lastRect.height}px`;
+
+  // Fade text in alongside the shape morph
+  if (targetNormal) {
+    targetNormal.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
+    targetNormal.style.opacity = '1';
+  }
+  if (targetSuper) {
+    targetSuper.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
+    targetSuper.style.opacity = '1';
+  }
+
+  const cleanup = (e: TransitionEvent) => {
+    // Only cleanup on the container's own width/height transition
+    if (e.target !== container) return;
+    if (e.propertyName !== 'width' && e.propertyName !== 'height') return;
+
+    container.style.transition = '';
+    container.style.width = '';
+    container.style.height = '';
+    container.style.overflow = '';
+    activeItemTransitioning = false;
+    container.removeEventListener('transitionend', cleanup);
+  };
+
+  container.addEventListener('transitionend', cleanup);
+
+  // Fallback cleanup in case transitionend drops
+  setTimeout(() => {
+    if (activeItemTransitioning) {
+      container.style.transition = '';
+      container.style.width = '';
+      container.style.height = '';
+      container.style.overflow = '';
+      activeItemTransitioning = false;
+      container.removeEventListener('transitionend', cleanup);
+    }
+  }, ACTIVE_MORPH_MS + 50);
 
   return true;
 };
@@ -190,10 +333,6 @@ class LoopSliderInstance {
     this.trackElement = track;
     this.prepareLoopLists(track);
 
-    // Hide list initially to prevent jump
-    this.primaryList.style.opacity = '0';
-    this.primaryList.style.transition = 'opacity 0.4s ease-out';
-
     this.collectSlides();
 
     if (this.prefersInfinite) {
@@ -216,26 +355,6 @@ class LoopSliderInstance {
 
     this.localLenis?.destroy();
     this.localLenis = null;
-  }
-
-  public applyInitialOffset() {
-    if (!this.localLenis) return;
-
-    // Ensure we're in a fresh frame to avoid race conditions with layout
-    requestAnimationFrame(() => {
-      const offset = this.viewportHeight * this.config.initialOffset;
-      if (offset > 0 && this.localLenis) {
-        // Scroll backwards (negative) to shift content down
-        this.localLenis.scrollTo(-offset, { immediate: true });
-      }
-
-      // Reveal the list in the next frame after scroll is applied
-      requestAnimationFrame(() => {
-        if (this.primaryList) {
-          this.primaryList.style.opacity = '1';
-        }
-      });
-    });
   }
 
   private initLocalLenis() {
@@ -682,8 +801,6 @@ export const initLoopSlider = () => {
     instances.forEach((instance) => instance.syncToTargets());
     document.body.removeAttribute(LOOP_SLIDER_SNAP_ATTR);
   }
-
-  instances.forEach((instance) => instance.applyInitialOffset());
 
   startSliderAnimationLoop();
 };

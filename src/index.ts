@@ -53,28 +53,12 @@ function revealHiddenElements() {
   });
 }
 
-/**
- * Add a persistent CSS transition on .activeitem-title so that any size
- * changes (triggered by content swaps) animate smoothly.
- */
-function setupActiveItemTransitions() {
-  const style = document.createElement('style');
-  style.textContent = `
-    .activeitem-title {
-      transition: width 0.35s ease, height 0.35s ease;
-      overflow: hidden;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
 window.Webflow ||= [];
 window.Webflow.push(() => {
   const name = 'John Doe';
   greetUser(name);
 
   revealHiddenElements();
-  setupActiveItemTransitions();
   initLoopSlider();
   initVideoPlayers();
 });
