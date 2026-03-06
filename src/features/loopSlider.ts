@@ -98,15 +98,21 @@ let activeItemTransitioning = false;
  */
 const applyActiveDetails = (source: HTMLElement): boolean => {
   const targetNormal = document.querySelector('.list-title-normal');
+  const targetSuper = document.querySelector('.list-title-super');
 
   if (!targetNormal || !source) return false;
 
   const sourceTitle = source.querySelector('.cms-homepage-title')?.textContent?.trim() || '';
+  const sourceSuper = source.querySelector('.cms-homepage-super')?.textContent?.trim() || '';
 
   let titleChanged = false;
 
   if (targetNormal.textContent !== sourceTitle) {
     targetNormal.textContent = sourceTitle;
+    titleChanged = true;
+  }
+  if (targetSuper && targetSuper.textContent !== sourceSuper) {
+    targetSuper.textContent = sourceSuper;
     titleChanged = true;
   }
 
@@ -166,11 +172,16 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
 
   // Check if content actually differs before animating
   const targetNormal = document.querySelector<HTMLElement>('.list-title-normal');
+  const targetSuper = document.querySelector<HTMLElement>('.list-title-super');
   if (!targetNormal) return false;
 
   const sourceTitle = source.querySelector('.cms-homepage-title')?.textContent?.trim() || '';
+  const sourceSuper = source.querySelector('.cms-homepage-super')?.textContent?.trim() || '';
 
-  const titleSame = targetNormal.textContent === sourceTitle;
+  let titleSame = targetNormal.textContent === sourceTitle;
+  if (targetSuper) {
+    titleSame = titleSame && targetSuper.textContent === sourceSuper;
+  }
 
   // Also check services
   const servicesOut = document.querySelector('.activeitem-services-list');
@@ -219,6 +230,10 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
     targetNormal.style.transition = 'none';
     targetNormal.style.opacity = '0';
   }
+  if (targetSuper) {
+    targetSuper.style.transition = 'none';
+    targetSuper.style.opacity = '0';
+  }
 
   // Swap content
   applyActiveDetails(source);
@@ -242,6 +257,10 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
   if (targetNormal) {
     targetNormal.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
     targetNormal.style.opacity = '1';
+  }
+  if (targetSuper) {
+    targetSuper.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
+    targetSuper.style.opacity = '1';
   }
 
   const cleanup = (e: TransitionEvent) => {
@@ -765,4 +784,21 @@ export const initLoopSlider = () => {
   }
 
   startSliderAnimationLoop();
+
+  // Initialize active details from the very first slide on load
+  const initActiveWithRetries = (tries = 40, delay = 50) => {
+    let count = 0;
+    const tick = () => {
+      const firstSlide = document.querySelector('.slide-w');
+      const source = firstSlide?.querySelector('.cms-homepage-source') as HTMLElement | null;
+      if (source && applyActiveDetails(source)) return;
+
+      count += 1;
+      if (count >= tries) return;
+      setTimeout(tick, delay);
+    };
+    tick();
+  };
+
+  initActiveWithRetries();
 };
