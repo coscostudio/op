@@ -1,31 +1,45 @@
-import Lenis from 'lenis';
-import Snap from 'lenis/snap';
-const LOOP_SLIDER_SELECTORS = {
-  root: ['[data-loop-slider="root"]', '.loop-slider-wrapper', '.slider-section'],
-  track: ['[data-loop-slider="track"]', '.loop-slider-track'],
-  list: ['[data-loop-slider="list"]', '.slider-wrapper'],
-  loop: ['[data-loop-slider="loop"]', '.loop-slider.w-dyn-list', '.loop-slider'],
-  item: ['[data-loop-slider="item"]', '.slide-w'],
-  content: ['[data-loop-slider="content"]', '.home-project-card'],
-  blur: ['[data-loop-slider="blur"]', '.slide-blur'],
-  media: ['[data-loop-slider="focus"]', '.home-project-card'],
-} as const satisfies Record<string, readonly string[]>;
+import Core from 'smooothy';
 
-const LOOP_SLIDER_CONFIG = {
-  baseScale: 0.4, // reduced to avoid full bleed
-  focusScale: 0.825, // max scale doesn't reach edges
-  blurMax: 100, // blur on enter/leave
-  translateMax: 0,
-  lerp: 0.08, // faster snapping
+const SEL = {
+  /** Outermost wrapper — used to find slider roots on the page */
+  root: '.loop-slider-wrapper',
+  /** Direct parent of slides — this is what smooothy is instantiated on */
+  sliderList: '.loop-slider',
+  /** Individual slide items */
+  slide: '.slide',
+  /** Card / content node inside each slide */
+  content: '.home-project-card',
+  /** Media focus node (blur target) */
+  media: '.home-project-card',
+  /** Overlay title element */
+  activeTitle: '.activeitem-title',
+  /** Title text spans */
+  titleNormal: '.list-title-normal',
+  titleSub: '.list-subtitle, .list-title-super',
+  /** CMS source block inside each slide */
+  cmsSource: '.cms-homepage-source',
+  cmsTitleField: '.cms-homepage-title',
+  cmsSuperField: '.cms-homepage-super',
+  /** Services */
+  servicesList: '.activeitem-services-list',
+  serviceSourceItem: '.active-services-source-item',
+} as const;
+
+const CONFIG = {
+  baseScale: 0.6,
+  focusScale: 0.825,
+  blurMax: 100,
+  lerp: 0.08,
   progressLerp: 0.12,
-  minOpacity: 0.5, // increased to prevent items looking completely gone
-  safeZoneBuffer: -32, // negative buffer pulls items into transition earlier
+  minOpacity: 0.5,
+  safeZoneBuffer: -32,
 };
+
+// ─── Slide state ────────────────────────────────────────────────────
 
 type SlideState = {
   node: HTMLElement;
   contentNode: HTMLElement;
-  blurNode: HTMLElement | null;
   focusNodes: HTMLElement[];
   progress: number;
   targetProgress: number;
@@ -33,106 +47,83 @@ type SlideState = {
   targetScale: number;
 };
 
-const LENIS_STYLE_ID = 'loop-slider-lenis-styles';
-const LENIS_STYLES =
-  'html.lenis,html.lenis body{height:auto}.lenis:not(.lenis-autoToggle).lenis-stopped{overflow:clip}.lenis [data-lenis-prevent],.lenis [data-lenis-prevent-wheel],.lenis [data-lenis-prevent-touch]{overscroll-behavior:contain}.lenis.lenis-smooth iframe{pointer-events:none}.lenis.lenis-autoToggle{transition-property:overflow;transition-duration:1ms;transition-behavior:allow-discrete}';
-const LOOP_SLIDER_SNAP_ATTR = 'data-loop-slider-snap';
+const slideStates = new WeakMap<HTMLElement, SlideState>();
 
-let sliderAnimationFrame: number | null = null;
-let sliderScrollListenerAttached = false;
-let sliderResizeListenerAttached = false;
+const getOrCreateSlideState = (node: HTMLElement): SlideState => {
+  const existing = slideStates.get(node);
+  if (existing) return existing;
 
-const loopSliderInstances: LoopSliderInstance[] = [];
+  const contentNode = node.querySelector<HTMLElement>(SEL.content) ?? node;
+  const focusTargets: HTMLElement[] = [];
+  const primary = node.querySelector<HTMLElement>(SEL.media);
+  const workTitle = node.querySelector<HTMLElement>('.work-title');
+  if (primary) focusTargets.push(primary);
+  if (workTitle) focusTargets.push(workTitle);
+  if (!focusTargets.length) focusTargets.push(contentNode);
 
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+  // Dynamic style hints
+  contentNode.style.willChange = 'transform, opacity, filter';
+  contentNode.style.transformOrigin = 'center center';
 
-const ensureLenisStyles = () => {
-  if (!document.getElementById(LENIS_STYLE_ID)) {
-    const style = document.createElement('style');
-    style.id = LENIS_STYLE_ID;
-    style.textContent = LENIS_STYLES;
-    document.head.appendChild(style);
-  }
+  const state: SlideState = {
+    node,
+    contentNode,
+    focusNodes: focusTargets,
+    progress: 0,
+    targetProgress: 0,
+    scale: CONFIG.baseScale,
+    targetScale: CONFIG.baseScale,
+  };
+  slideStates.set(node, state);
+  return state;
 };
 
-const queryElementWithFallback = <T extends Element>(
-  root: ParentNode | Document,
-  selectors: readonly string[]
-): T | null => {
-  for (const selector of selectors) {
-    const element = root.querySelector<T>(selector);
-    if (element) {
-      return element;
-    }
-  }
+// ─── Helpers ────────────────────────────────────────────────────────
 
-  return null;
-};
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-const queryAllWithFallback = <T extends Element>(
-  root: ParentNode | Document,
-  selectors: readonly string[]
-): T[] => {
-  for (const selector of selectors) {
-    const elements = Array.from(root.querySelectorAll<T>(selector));
-    if (elements.length) {
-      return elements;
-    }
-  }
+// ─── Active item title ──────────────────────────────────────────────
 
-  return [];
-};
+const CROSSFADE_MS = 250;
 
-const getLoopSliderRoots = () => {
-  const roots = queryAllWithFallback<HTMLElement>(document, LOOP_SLIDER_SELECTORS.root);
-  return roots.filter((root) => queryElementWithFallback(root, LOOP_SLIDER_SELECTORS.list));
-};
-
-// Transition config for the activeitem morph
-const ACTIVE_MORPH_MS = 400;
-let activeItemTransitioning = false;
-
-/**
- * Apply the actual DOM changes for the active item details.
- * Returns true if anything changed.
- */
 const applyActiveDetails = (source: HTMLElement): boolean => {
-  const targetNormal = document.querySelector('.list-title-normal');
-  const targetSuper = document.querySelector('.list-title-super');
+  const titleEl = document.querySelector(SEL.titleNormal);
+  const subEl = document.querySelector(SEL.titleSub);
+  if (!titleEl || !source) return false;
 
-  if (!targetNormal || !source) return false;
+  const srcTitle = source.querySelector(SEL.cmsTitleField)?.textContent?.trim() || '';
+  const srcSub = source.querySelector(SEL.cmsSuperField)?.textContent?.trim() || '';
 
-  const sourceTitle = source.querySelector('.cms-homepage-title')?.textContent?.trim() || '';
-  const sourceSuper = source.querySelector('.cms-homepage-super')?.textContent?.trim() || '';
+  let changed = false;
 
-  let titleChanged = false;
-
-  if (targetNormal.textContent !== sourceTitle) {
-    targetNormal.textContent = sourceTitle;
-    titleChanged = true;
-  }
-  if (targetSuper && targetSuper.textContent !== sourceSuper) {
-    targetSuper.textContent = sourceSuper;
-    titleChanged = true;
+  if (titleEl.textContent !== srcTitle) {
+    titleEl.textContent = srcTitle;
+    changed = true;
   }
 
-  // Services: rebuild the visible list from the CMS nested list
-  const servicesOut = document.querySelector('.activeitem-services-list');
-  const visibleLabels = new Set(
+  if (subEl) {
+    const formatted = srcSub ? ` // ${srcSub}` : '';
+    if (subEl.textContent !== formatted) {
+      subEl.textContent = formatted;
+      changed = true;
+    }
+  }
+
+  // Services
+  const servicesOut = document.querySelector(SEL.servicesList);
+  const currentLabels = new Set(
     Array.from(servicesOut?.children || []).map((li) => li.textContent?.trim())
   );
   const incomingLabels = new Set(
-    Array.from(source.querySelectorAll('.active-services-source-item')).map(
-      (item) => item.textContent?.trim() || ''
+    Array.from(source.querySelectorAll(SEL.serviceSourceItem)).map(
+      (el) => el.textContent?.trim() || ''
     )
   );
 
-  let servicesChanged = false;
-  if (visibleLabels.size !== incomingLabels.size) {
-    servicesChanged = true;
-  } else {
-    for (const label of incomingLabels) {
-      if (!visibleLabels.has(label)) {
+  let servicesChanged = currentLabels.size !== incomingLabels.size;
+  if (!servicesChanged) {
+    for (const l of incomingLabels) {
+      if (!currentLabels.has(l)) {
         servicesChanged = true;
         break;
       }
@@ -143,662 +134,299 @@ const applyActiveDetails = (source: HTMLElement): boolean => {
     servicesOut.innerHTML = '';
     incomingLabels.forEach((label) => {
       if (!label) return;
-
       const li = document.createElement('li');
       li.className = 'activeitem-service-bubble';
-
       const inner = document.createElement('div');
       inner.textContent = label;
-
       li.appendChild(inner);
       servicesOut.appendChild(li);
     });
   }
 
-  return titleChanged || servicesChanged;
+  return changed || servicesChanged;
 };
 
 /**
- * Morph the .activeitem-title container when content changes.
- * Uses a FLIP-style technique to smoothly animate width and height.
+ * Crossfade the title text when the active slide changes.
  */
 const updateActiveDetailsFromSource = (source: HTMLElement) => {
-  const container = document.querySelector<HTMLElement>('.activeitem-title');
+  const titleEl = document.querySelector<HTMLElement>(SEL.titleNormal);
+  const subEl = document.querySelector<HTMLElement>(SEL.titleSub);
+  const servicesEl = document.querySelector<HTMLElement>(SEL.servicesList);
+  if (!titleEl) return false;
 
-  // If no animated container, fall back to direct swap
-  if (!container) {
-    return applyActiveDetails(source);
-  }
+  // Check whether content actually changed
+  const srcTitle = source.querySelector(SEL.cmsTitleField)?.textContent?.trim() || '';
+  const srcSub = source.querySelector(SEL.cmsSuperField)?.textContent?.trim() || '';
+  const formatted = srcSub ? ` // ${srcSub}` : '';
 
-  // Check if content actually differs before animating
-  const targetNormal = document.querySelector<HTMLElement>('.list-title-normal');
-  const targetSuper = document.querySelector<HTMLElement>('.list-title-super');
-  if (!targetNormal) return false;
+  let same = titleEl.textContent === srcTitle;
+  if (subEl) same = same && subEl.textContent === formatted;
 
-  const sourceTitle = source.querySelector('.cms-homepage-title')?.textContent?.trim() || '';
-  const sourceSuper = source.querySelector('.cms-homepage-super')?.textContent?.trim() || '';
-
-  let titleSame = targetNormal.textContent === sourceTitle;
-  if (targetSuper) {
-    titleSame = titleSame && targetSuper.textContent === sourceSuper;
-  }
-
-  // Also check services
-  const servicesOut = document.querySelector('.activeitem-services-list');
-  const visibleLabels = new Set(
-    Array.from(servicesOut?.children || []).map((li) => li.textContent?.trim())
+  const currentLabels = new Set(
+    Array.from(servicesEl?.children || []).map((li) => li.textContent?.trim())
   );
   const incomingLabels = new Set(
-    Array.from(source.querySelectorAll('.active-services-source-item')).map(
-      (item) => item.textContent?.trim() || ''
+    Array.from(source.querySelectorAll(SEL.serviceSourceItem)).map(
+      (el) => el.textContent?.trim() || ''
     )
   );
-  let servicesSame = visibleLabels.size === incomingLabels.size;
+  let servicesSame = currentLabels.size === incomingLabels.size;
   if (servicesSame) {
-    for (const label of incomingLabels) {
-      if (!visibleLabels.has(label)) {
+    for (const l of incomingLabels) {
+      if (!currentLabels.has(l)) {
         servicesSame = false;
         break;
       }
     }
   }
 
-  // Nothing changed — skip
-  if (titleSame && servicesSame) return false;
+  if (same && servicesSame) return false;
 
-  // If already mid-transition, cancel and finish previous immediately
-  if (activeItemTransitioning) {
-    container.style.transition = 'none';
-    container.style.width = '';
-    container.style.height = '';
-    activeItemTransitioning = false;
-  }
+  // Fade out
+  const fadeEls = [titleEl, subEl, servicesEl].filter(Boolean) as HTMLElement[];
+  fadeEls.forEach((el) => {
+    el.style.transition = `opacity ${CROSSFADE_MS}ms ease`;
+    el.style.opacity = '0';
+  });
 
-  activeItemTransitioning = true;
-
-  // First: measure current size
-  container.style.transition = 'none';
-  container.style.width = '';
-  container.style.height = '';
-  // ensure we don't flash overflowing content during measurement/animation
-  container.style.overflow = 'hidden';
-
-  const firstRect = container.getBoundingClientRect();
-
-  // Prepare text elements for fade
-  if (targetNormal) {
-    targetNormal.style.transition = 'none';
-    targetNormal.style.opacity = '0';
-  }
-  if (targetSuper) {
-    targetSuper.style.transition = 'none';
-    targetSuper.style.opacity = '0';
-  }
-
-  // Swap content
-  applyActiveDetails(source);
-
-  // Last: measure new size
-  const lastRect = container.getBoundingClientRect();
-
-  // Invert: forcefully set back to old size
-  container.style.width = `${firstRect.width}px`;
-  container.style.height = `${firstRect.height}px`;
-
-  // Force reflow
-  void container.offsetHeight;
-
-  // Play: transition to new size
-  container.style.transition = `width ${ACTIVE_MORPH_MS}ms cubic-bezier(0.25, 1, 0.5, 1), height ${ACTIVE_MORPH_MS}ms cubic-bezier(0.25, 1, 0.5, 1)`;
-  container.style.width = `${lastRect.width}px`;
-  container.style.height = `${lastRect.height}px`;
-
-  // Fade text in alongside the shape morph
-  if (targetNormal) {
-    targetNormal.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
-    targetNormal.style.opacity = '1';
-  }
-  if (targetSuper) {
-    targetSuper.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
-    targetSuper.style.opacity = '1';
-  }
-
-  const cleanup = (e: TransitionEvent) => {
-    // Only cleanup on the container's own width/height transition
-    if (e.target !== container) return;
-    if (e.propertyName !== 'width' && e.propertyName !== 'height') return;
-
-    container.style.transition = '';
-    container.style.width = '';
-    container.style.height = '';
-    container.style.overflow = '';
-    activeItemTransitioning = false;
-    container.removeEventListener('transitionend', cleanup);
-  };
-
-  container.addEventListener('transitionend', cleanup);
-
-  // Fallback cleanup in case transitionend drops
+  // Swap content after fade-out completes, then fade back in
   setTimeout(() => {
-    if (activeItemTransitioning) {
-      container.style.transition = '';
-      container.style.width = '';
-      container.style.height = '';
-      container.style.overflow = '';
-      activeItemTransitioning = false;
-      container.removeEventListener('transitionend', cleanup);
-    }
-  }, ACTIVE_MORPH_MS + 50);
+    applyActiveDetails(source);
+    fadeEls.forEach((el) => {
+      el.style.opacity = '1';
+    });
+  }, CROSSFADE_MS);
 
   return true;
 };
 
+// ─── Slider instance ────────────────────────────────────────────────
+
+let animationFrame: number | null = null;
+let resizeAttached = false;
+const instances: LoopSliderInstance[] = [];
+
 class LoopSliderInstance {
   public readonly root: HTMLElement;
-  public readonly prefersInfinite: boolean;
-  private readonly config = LOOP_SLIDER_CONFIG;
-  private slides: SlideState[] = [];
-  private viewportHeight = window.innerHeight || 0;
-  private primaryList: HTMLElement | null = null;
-  private loopHeight = 0;
-  private loopOffset = 0;
-  private virtualScroll = 0;
-  private loopIndex = 0;
-  private previousScroll: number | null = null;
-  private trackElement: HTMLElement | null = null;
-  private loopLists: HTMLElement[] = [];
-  private localLenis: Lenis | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private localSnap: any | null = null;
-  private localLenisRaf: number | null = null;
-  private handleLenisScroll?: () => void;
-  private mostVisibleSlide: SlideState | null = null;
+  private slider: Core | null = null;
+  private mostVisibleNode: HTMLElement | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
-    this.prefersInfinite = root.dataset.loopSliderInfinite !== 'false';
 
-    const track = queryElementWithFallback<HTMLElement>(root, LOOP_SLIDER_SELECTORS.track);
-    const list = queryElementWithFallback<HTMLElement>(root, LOOP_SLIDER_SELECTORS.list);
-
-    if (!list || !track) {
-      throw new Error(
-        'Loop slider list not found. Add data-loop-slider="list" to the slider wrapper.'
-      );
+    const list = root.querySelector<HTMLElement>(SEL.sliderList);
+    if (!list) {
+      throw new Error(`Loop slider: could not find "${SEL.sliderList}" inside "${SEL.root}".`);
     }
 
-    this.primaryList = list;
-    this.loopHeight = this.primaryList.scrollHeight;
-    this.trackElement = track;
-    this.prepareLoopLists(track);
-
-    this.collectSlides();
-
-    if (this.prefersInfinite) {
-      this.initLocalLenis();
-    }
+    this.initSmooothy(list);
   }
 
-  public destroy() {
-    if (this.handleLenisScroll && this.localLenis) {
-      this.localLenis.off('scroll', this.handleLenisScroll);
-    }
-
-    if (this.localLenisRaf !== null) {
-      window.cancelAnimationFrame(this.localLenisRaf);
-      this.localLenisRaf = null;
-    }
-
-    this.localSnap?.destroy();
-    this.localSnap = null;
-
-    this.localLenis?.destroy();
-    this.localLenis = null;
+  destroy() {
+    this.slider?.destroy();
+    this.slider = null;
   }
 
-  private initLocalLenis() {
-    if (this.localLenis || !this.trackElement) {
-      return;
-    }
+  // ── Smooothy ──────────────────────────────────────────────────────
 
-    ensureLenisStyles();
+  private initSmooothy(list: HTMLElement) {
+    if (this.slider) return;
 
-    this.root.style.overflow = this.root.style.overflow || 'hidden';
-    this.root.style.position = this.root.style.position || 'relative';
-    this.trackElement.style.willChange = this.trackElement.style.willChange || 'transform';
-
-    this.localLenis = new Lenis({
-      wrapper: this.root,
-      content: this.trackElement,
-      smoothWheel: true,
+    this.slider = new Core(list, {
       infinite: true,
-      syncTouch: true,
-      touchMultiplier: 1.66,
-      wheelMultiplier: 1.66, // Lower = less travel per gesture before snap kicks in
+      snap: true,
+      vertical: true,
+      scrollInput: true,
+      onUpdate: () => this.measure(),
+      onSlideChange: () => this.measure(),
     });
 
-    this.handleLenisScroll = () => {
-      this.measure();
-    };
+    // Disable mouse drag — scroll and touch only
+    list.style.cursor = 'default';
+    list.addEventListener('mousedown', (e) => e.stopPropagation(), true);
 
-    this.localLenis.on('scroll', this.handleLenisScroll);
-
-    // Lock snap: always snaps in the scroll direction (forward), not back to closest.
-    // Only a tiny incidental nudge would snap back.
-    this.localSnap = new Snap(this.localLenis, {
-      type: 'lock',
-      duration: 0.33,
-      debounce: 33,
-      distanceThreshold: 99999, // Always snap, no matter how far the next card is
-      easing: (t: number) => 1 - Math.pow(1 - t, 3),
-    });
-
-    // Register all slides as snap points (center-aligned)
-    this.slides.forEach((slide) => {
-      this.localSnap?.addElement(slide.node as HTMLElement, { align: ['center'] });
-    });
-
-    const raf = (time: number) => {
-      this.localLenis?.raf(time);
-      this.localLenisRaf = window.requestAnimationFrame(raf);
-    };
-
-    this.localLenisRaf = window.requestAnimationFrame(raf);
+    // smooothy requires us to call .init() + .update() each frame
+    this.slider.init();
+    requestAnimationFrame(() => this.measure());
   }
 
-  private collectSlides() {
-    const nodes = queryAllWithFallback<HTMLElement>(this.root, LOOP_SLIDER_SELECTORS.item);
+  // ── Per-frame measurement ─────────────────────────────────────────
 
-    this.slides = nodes.map((node) => ({
-      node,
-      contentNode:
-        queryElementWithFallback<HTMLElement>(node, LOOP_SLIDER_SELECTORS.content) ?? node,
-      blurNode: queryElementWithFallback<HTMLElement>(node, LOOP_SLIDER_SELECTORS.blur),
-      focusNodes: (() => {
-        const focusTargets: HTMLElement[] = [];
-        const primaryFocus = queryElementWithFallback<HTMLElement>(
-          node,
-          LOOP_SLIDER_SELECTORS.media
-        );
-        const titleNode = node.querySelector<HTMLElement>('.work-title');
-        if (primaryFocus) {
-          focusTargets.push(primaryFocus);
-        }
-        if (titleNode) {
-          focusTargets.push(titleNode);
-        }
-        if (!focusTargets.length) {
-          focusTargets.push(
-            queryElementWithFallback<HTMLElement>(node, LOOP_SLIDER_SELECTORS.content) ?? node
-          );
-        }
-        return focusTargets;
-      })(),
-      progress: 0,
-      targetProgress: 0,
-      scale: this.config.baseScale,
-      targetScale: this.config.baseScale,
-    }));
+  measure() {
+    const slides = this.root.querySelectorAll<HTMLElement>(SEL.slide);
+    if (!slides.length) return;
 
-    this.slides.forEach((slide) => {
-      const content = slide.contentNode;
-      content.style.willChange = 'transform, opacity, filter, mix-blend-mode';
-      content.style.transformOrigin = 'center center';
-      content.style.position = content.style.position || 'relative';
-    });
-  }
+    const vh = Math.max(window.innerHeight, 1);
+    const buffer = CONFIG.safeZoneBuffer;
 
-  private applySlideStyles(slide: SlideState) {
-    const opacity = this.config.minOpacity + (1 - this.config.minOpacity) * slide.progress;
+    let maxVis = -1;
+    let bestNode: HTMLElement | null = null;
 
-    slide.contentNode.style.transform = `scale(${slide.scale.toFixed(4)})`;
-    slide.contentNode.style.opacity = opacity.toFixed(3);
+    slides.forEach((node) => {
+      const state = getOrCreateSlideState(node);
+      const rect = node.getBoundingClientRect();
 
-    slide.focusNodes.forEach((target) => {
-      const visibility = slide.progress;
+      // Vertical distance of slide center from viewport center
+      const nodeCenter = rect.top + rect.height / 2;
+      const vpCenter = vh / 2;
+      const distance = Math.abs(nodeCenter - vpCenter);
+      const plateau = Math.max(0, (rect.height - vh) / 2);
+      const activeDist = Math.max(0, distance - plateau);
+      const transitionDist = vh / 2 + buffer - 1;
 
-      const blurValue = (1 - visibility) * this.config.blurMax;
-      const xRayIntensity = (1 - visibility) * 100;
+      let vis = 1 - activeDist / transitionDist;
+      vis = clamp(vis * 2.5, 0, 1);
+      vis = Math.pow(vis, 0.3);
 
-      // We apply desaturation (grayscale) and inversion simultaneously with the blur
-      // to create a smooth, low-saturation x-ray effect that avoids 'difference' harshness
-      target.style.filter = `blur(${blurValue.toFixed(2)}px) grayscale(${xRayIntensity.toFixed(1)}%) invert(${xRayIntensity.toFixed(1)}%)`;
-    });
+      state.targetProgress = vis;
+      state.targetScale = CONFIG.baseScale + (CONFIG.focusScale - CONFIG.baseScale) * vis;
 
-    if (slide.blurNode) {
-      slide.blurNode.style.opacity = (1 - slide.progress).toFixed(3);
-    }
-  }
-
-  private prepareLoopLists(track: HTMLElement) {
-    this.loopLists = queryAllWithFallback<HTMLElement>(track, LOOP_SLIDER_SELECTORS.loop);
-
-    if (!this.loopLists.length) {
-      this.loopLists = [];
-      return;
-    }
-
-    if (this.loopLists.length < 2) {
-      const clone = this.loopLists[0].cloneNode(true) as HTMLElement;
-      track.appendChild(clone);
-      this.loopLists.push(clone);
-    }
-  }
-
-  private rotateLists(direction: 'forward' | 'backward') {
-    if (!this.trackElement || !this.loopLists.length) {
-      return;
-    }
-
-    if (direction === 'forward') {
-      const first = this.loopLists.shift();
-
-      if (!first) {
-        return;
-      }
-
-      this.trackElement.appendChild(first);
-      this.loopLists.push(first);
-    } else {
-      const last = this.loopLists.pop();
-
-      if (!last) {
-        return;
-      }
-
-      const firstChild = this.trackElement.firstElementChild;
-      if (firstChild) {
-        this.trackElement.insertBefore(last, firstChild);
-      } else {
-        this.trackElement.appendChild(last);
-      }
-
-      this.loopLists.unshift(last);
-    }
-  }
-
-  private computeLoopHeight() {
-    if (!this.primaryList) {
-      return this.loopHeight;
-    }
-
-    const height = this.primaryList.scrollHeight || this.primaryList.offsetHeight;
-
-    if (height) {
-      this.loopHeight = height;
-    }
-
-    return this.loopHeight;
-  }
-
-  private applyLoopOffset() {
-    if (!this.prefersInfinite || !this.localLenis || !this.trackElement) {
-      return;
-    }
-
-    const loopHeight = this.loopHeight || this.computeLoopHeight();
-
-    if (!loopHeight) {
-      return;
-    }
-
-    const { scroll } = this.localLenis;
-    const limit = Math.max(this.localLenis.limit || loopHeight, loopHeight);
-
-    if (this.previousScroll === null) {
-      this.previousScroll = scroll;
-      this.virtualScroll = 0;
-      this.loopIndex = 0;
-      this.loopOffset = 0;
-      this.trackElement.style.transform = '';
-      return;
-    }
-
-    let delta = scroll - this.previousScroll;
-
-    if (Math.abs(delta) > limit * 0.5) {
-      delta += delta > 0 ? -limit : limit;
-    }
-
-    this.virtualScroll += delta;
-    this.previousScroll = scroll;
-    const nextLoopIndex = Math.floor(this.virtualScroll / loopHeight);
-    let diff = nextLoopIndex - this.loopIndex;
-
-    while (diff > 0) {
-      this.rotateLists('forward');
-      this.loopIndex += 1;
-      diff -= 1;
-    }
-
-    while (diff < 0) {
-      this.rotateLists('backward');
-      this.loopIndex -= 1;
-      diff += 1;
-    }
-
-    const remainder = this.virtualScroll - this.loopIndex * loopHeight;
-    this.loopOffset = scroll - remainder;
-    this.trackElement.style.transform = `translate3d(0, ${this.loopOffset}px, 0)`;
-  }
-
-  public measure() {
-    if (!this.slides.length) {
-      return;
-    }
-
-    const viewportHeight = Math.max(window.innerHeight, 1);
-    this.viewportHeight = viewportHeight;
-    this.computeLoopHeight();
-    this.applyLoopOffset();
-
-    const buffer = this.config.safeZoneBuffer;
-
-    let maxVisibility = -1;
-    let nextActiveSlide: SlideState | null = null;
-
-    this.slides.forEach((slide) => {
-      const scaleRect = slide.node.getBoundingClientRect();
-      const nodeCenter = scaleRect.top + scaleRect.height / 2;
-      const viewportCenter = viewportHeight / 2;
-
-      // Distance of the slide's center from the viewport center
-      const distance = Math.abs(nodeCenter - viewportCenter);
-
-      // If the slide is taller than the viewport, it has a "plateau" where it stays perfectly centered visually
-      const plateau = Math.max(0, (scaleRect.height - viewportHeight) / 2);
-
-      // Distance past the plateau
-      const activeDistance = Math.max(0, distance - plateau);
-
-      // Transition over half the viewport height + buffer
-      const transitionDist = viewportHeight / 2 + buffer - 1;
-
-      // We want items to grow much faster when they enter, so the exponent is smaller
-      // and we use a more aggressive clamping
-      let scaleVisibility = 1 - activeDistance / transitionDist;
-
-      // Force it to reach 100% visibility (width) much earlier in its scroll journey
-      // Multiply by 2.5 so that it's 100% wide for the entire middle portion of its transition
-      scaleVisibility = clamp(scaleVisibility * 2.5, 0, 1);
-
-      // use an aggressive curve to puff them out quickly instead of shrinking linearly
-      scaleVisibility = Math.pow(scaleVisibility, 0.3);
-
-      slide.targetProgress = scaleVisibility;
-      slide.targetScale =
-        this.config.baseScale + (this.config.focusScale - this.config.baseScale) * scaleVisibility;
-
-      if (scaleVisibility > maxVisibility) {
-        maxVisibility = scaleVisibility;
-        nextActiveSlide = slide;
+      if (vis > maxVis) {
+        maxVis = vis;
+        bestNode = node;
       }
     });
 
-    if (nextActiveSlide && nextActiveSlide !== this.mostVisibleSlide && maxVisibility > 0.5) {
-      this.mostVisibleSlide = nextActiveSlide as SlideState;
-      const source = this.mostVisibleSlide.node.querySelector<HTMLElement>('.cms-homepage-source');
-      if (source) {
-        updateActiveDetailsFromSource(source);
+    // Update active title content when slide changes
+    if (bestNode && bestNode !== this.mostVisibleNode && maxVis > 0.5) {
+      this.mostVisibleNode = bestNode;
+      const src = (this.mostVisibleNode as HTMLElement).querySelector<HTMLElement>(SEL.cmsSource);
+      if (src) updateActiveDetailsFromSource(src);
+    }
+
+    // Fade the title overlay in/out based on how settled the active slide is.
+    // When swiping quickly, maxVis drops below threshold → title fades out
+    // revealing the logo underneath.
+    //
+    // IMPORTANT: Only control opacity once slides have real dimensions.
+    // Otherwise we override the index.ts reveal animation with opacity 0.
+    const firstSlideRect = slides[0]?.getBoundingClientRect();
+    const slidesHaveSize = firstSlideRect && firstSlideRect.width > 1 && firstSlideRect.height > 1;
+
+    if (slidesHaveSize) {
+      const titleContainer = document.querySelector<HTMLElement>(SEL.activeTitle);
+      if (titleContainer) {
+        const titleOpacity = clamp((maxVis - 0.7) / 0.2, 0, 1);
+        // Must use !important to override the Webflow CSS rule
+        titleContainer.style.setProperty('opacity', titleOpacity.toFixed(2), 'important');
+        titleContainer.style.setProperty('transition', 'opacity 0.1s linear');
+        titleContainer.style.pointerEvents = titleOpacity < 0.1 ? 'none' : 'auto';
       }
     }
   }
 
-  public animate() {
-    if (!this.slides.length) {
-      return;
-    }
+  // ── Per-frame interpolation (called from rAF loop) ────────────────
 
-    this.slides.forEach((slide) => {
-      slide.scale += (slide.targetScale - slide.scale) * this.config.lerp;
-      slide.progress += (slide.targetProgress - slide.progress) * this.config.progressLerp;
+  animate() {
+    // Drive smooothy's frame — it does NOT run its own rAF loop
+    this.slider?.update();
 
-      this.applySlideStyles(slide);
+    const slides = this.root.querySelectorAll<HTMLElement>(SEL.slide);
+    slides.forEach((node) => {
+      const s = getOrCreateSlideState(node);
+      s.scale += (s.targetScale - s.scale) * CONFIG.lerp;
+      s.progress += (s.targetProgress - s.progress) * CONFIG.progressLerp;
+      this.applyStyles(s);
     });
   }
 
-  public syncToTargets() {
-    if (!this.slides.length) {
-      return;
-    }
+  syncToTargets() {
+    const slides = this.root.querySelectorAll<HTMLElement>(SEL.slide);
+    slides.forEach((node) => {
+      const s = getOrCreateSlideState(node);
+      s.scale = s.targetScale;
+      s.progress = s.targetProgress;
+      this.applyStyles(s);
+    });
+  }
 
-    this.slides.forEach((slide) => {
-      slide.scale = slide.targetScale;
-      slide.progress = slide.targetProgress;
-      this.applySlideStyles(slide);
+  // ── Visual effects ────────────────────────────────────────────────
+
+  private applyStyles(s: SlideState) {
+    const opacity = CONFIG.minOpacity + (1 - CONFIG.minOpacity) * s.progress;
+    s.contentNode.style.transform = `scale(${s.scale.toFixed(4)})`;
+    s.contentNode.style.opacity = opacity.toFixed(3);
+
+    s.focusNodes.forEach((target) => {
+      const blur = (1 - s.progress) * CONFIG.blurMax;
+      const xray = (1 - s.progress) * 100;
+      target.style.filter = `blur(${blur.toFixed(2)}px) grayscale(${xray.toFixed(1)}%) invert(${xray.toFixed(1)}%)`;
     });
   }
 }
 
-const triggerSliderMeasurements = () => {
-  loopSliderInstances.forEach((instance) => instance.measure());
-};
+// ─── Global lifecycle ───────────────────────────────────────────────
 
-const handleNativeScroll = () => {
-  triggerSliderMeasurements();
-};
+const handleResize = () => instances.forEach((i) => i.measure());
 
-const handleResize = () => {
-  triggerSliderMeasurements();
-};
-
-const attachNativeScrollListener = () => {
-  if (sliderScrollListenerAttached) {
-    return;
-  }
-
-  window.addEventListener('scroll', handleNativeScroll, { passive: true });
-  sliderScrollListenerAttached = true;
-};
-
-const attachResizeListener = () => {
-  if (sliderResizeListenerAttached) {
-    return;
-  }
-
-  window.addEventListener('resize', handleResize);
-  sliderResizeListenerAttached = true;
-};
-
-const startSliderAnimationLoop = () => {
-  if (sliderAnimationFrame !== null) {
-    return;
-  }
-
+const startAnimationLoop = () => {
+  if (animationFrame !== null) return;
   const loop = () => {
-    loopSliderInstances.forEach((instance) => instance.animate());
-    sliderAnimationFrame = window.requestAnimationFrame(loop);
+    instances.forEach((i) => i.animate());
+    animationFrame = requestAnimationFrame(loop);
   };
-
-  sliderAnimationFrame = window.requestAnimationFrame(loop);
+  animationFrame = requestAnimationFrame(loop);
 };
 
 export const destroyLoopSlider = () => {
-  if (sliderAnimationFrame !== null) {
-    window.cancelAnimationFrame(sliderAnimationFrame);
-    sliderAnimationFrame = null;
+  if (animationFrame !== null) {
+    cancelAnimationFrame(animationFrame);
+    animationFrame = null;
   }
-
-  if (sliderScrollListenerAttached) {
-    window.removeEventListener('scroll', handleNativeScroll);
-    sliderScrollListenerAttached = false;
-  }
-
-  if (sliderResizeListenerAttached) {
+  if (resizeAttached) {
     window.removeEventListener('resize', handleResize);
-    sliderResizeListenerAttached = false;
+    resizeAttached = false;
   }
-
-  loopSliderInstances.forEach((instance) => instance.destroy());
-  loopSliderInstances.length = 0;
+  instances.forEach((i) => i.destroy());
+  instances.length = 0;
 };
 
 export const initLoopSlider = () => {
-  const shouldSnap = document.body.hasAttribute(LOOP_SLIDER_SNAP_ATTR);
-  // Prevent browser scroll restoration from interfering with our custom offset
   if ('scrollRestoration' in history) {
     history.scrollRestoration = 'manual';
   }
 
-  const sliderRoots = getLoopSliderRoots();
+  const roots = Array.from(document.querySelectorAll<HTMLElement>(SEL.root));
+  if (!roots.length) return;
 
-  if (!sliderRoots.length) {
-    if (shouldSnap) {
-      document.body.removeAttribute(LOOP_SLIDER_SNAP_ATTR);
-    }
-    return;
-  }
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-  if (prefersReducedMotion.matches) {
-    if (shouldSnap) {
-      document.body.removeAttribute(LOOP_SLIDER_SNAP_ATTR);
-    }
-    return;
-  }
-
-  const instances = sliderRoots
+  const created = roots
     .map((root) => {
       try {
         return new LoopSliderInstance(root);
-      } catch {
+      } catch (e) {
+        console.error('[loopSlider]', e);
         return null;
       }
     })
-    .filter((instance): instance is LoopSliderInstance => Boolean(instance));
+    .filter((i): i is LoopSliderInstance => Boolean(i));
 
-  if (!instances.length) {
-    return;
+  if (!created.length) return;
+
+  instances.push(...created);
+
+  if (!resizeAttached) {
+    window.addEventListener('resize', handleResize);
+    resizeAttached = true;
   }
 
-  loopSliderInstances.push(...instances);
+  instances.forEach((i) => i.measure());
+  startAnimationLoop();
 
-  attachNativeScrollListener();
-  attachResizeListener();
-
-  triggerSliderMeasurements();
-  if (shouldSnap) {
-    instances.forEach((instance) => instance.syncToTargets());
-    document.body.removeAttribute(LOOP_SLIDER_SNAP_ATTR);
-  }
-
-  startSliderAnimationLoop();
-
-  // Initialize active details from the very first slide on load
-  const initActiveWithRetries = (tries = 40, delay = 50) => {
+  // Populate the title from the first slide (with retries while CMS loads)
+  const initTitle = (tries = 40, delay = 50) => {
     let count = 0;
     const tick = () => {
-      const firstSlide = document.querySelector('.slide-w');
-      const source = firstSlide?.querySelector('.cms-homepage-source') as HTMLElement | null;
-      if (source && applyActiveDetails(source)) return;
-
-      count += 1;
+      const firstSlide = document.querySelector(SEL.slide);
+      const src = firstSlide?.querySelector(SEL.cmsSource) as HTMLElement | null;
+      if (src && applyActiveDetails(src)) return;
+      count++;
       if (count >= tries) return;
       setTimeout(tick, delay);
     };
     tick();
   };
-
-  initActiveWithRetries();
+  initTitle();
 };

@@ -28,1564 +28,543 @@
     );
   };
 
-  // node_modules/.pnpm/lenis@1.3.18-dev.1/node_modules/lenis/dist/lenis.mjs
-  var version = "1.3.18-dev.1";
-  function clamp(min, input, max) {
-    return Math.max(min, Math.min(input, max));
-  }
-  function lerp(x, y, t) {
-    return (1 - t) * x + t * y;
-  }
-  function damp(x, y, lambda, deltaTime) {
-    return lerp(x, y, 1 - Math.exp(-lambda * deltaTime));
-  }
-  function modulo(n, d) {
-    return (n % d + d) % d;
-  }
-  var Animate = class {
-    isRunning = false;
-    value = 0;
-    from = 0;
-    to = 0;
-    currentTime = 0;
-    // These are instanciated in the fromTo method
-    lerp;
-    duration;
-    easing;
-    onUpdate;
-    /**
-     * Advance the animation by the given delta time
-     *
-     * @param deltaTime - The time in seconds to advance the animation
-     */
-    advance(deltaTime) {
-      if (!this.isRunning) return;
-      let completed = false;
-      if (this.duration && this.easing) {
-        this.currentTime += deltaTime;
-        const linearProgress = clamp(0, this.currentTime / this.duration, 1);
-        completed = linearProgress >= 1;
-        const easedProgress = completed ? 1 : this.easing(linearProgress);
-        this.value = this.from + (this.to - this.from) * easedProgress;
-      } else if (this.lerp) {
-        this.value = damp(this.value, this.to, this.lerp * 60, deltaTime);
-        if (Math.round(this.value) === this.to) {
-          this.value = this.to;
-          completed = true;
-        }
-      } else {
-        this.value = this.to;
-        completed = true;
-      }
-      if (completed) {
-        this.stop();
-      }
-      this.onUpdate?.(this.value, completed);
-    }
-    /** Stop the animation */
-    stop() {
-      this.isRunning = false;
-    }
-    /**
-     * Set up the animation from a starting value to an ending value
-     * with optional parameters for lerping, duration, easing, and onUpdate callback
-     *
-     * @param from - The starting value
-     * @param to - The ending value
-     * @param options - Options for the animation
-     */
-    fromTo(from, to, { lerp: lerp2, duration, easing, onStart, onUpdate }) {
-      this.from = this.value = from;
-      this.to = to;
-      this.lerp = lerp2;
-      this.duration = duration;
-      this.easing = easing;
-      this.currentTime = 0;
-      this.isRunning = true;
-      onStart?.();
-      this.onUpdate = onUpdate;
-    }
+  // node_modules/.pnpm/smooothy@0.0.35/node_modules/smooothy/dist/esm.js
+  var B = Object.create;
+  var { getPrototypeOf: G, defineProperty: O, getOwnPropertyNames: U } = Object;
+  var A = Object.prototype.hasOwnProperty;
+  var N = (o, u, h) => {
+    h = o != null ? B(G(o)) : {};
+    let b = u || !o || !o.__esModule ? O(h, "default", { value: o, enumerable: true }) : h;
+    for (let _ of U(o)) if (!A.call(b, _)) O(b, _, { get: () => o[_], enumerable: true });
+    return b;
   };
-  function debounce(callback, delay) {
-    let timer;
-    return function(...args) {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        timer = void 0;
-        callback.apply(this, args);
-      }, delay);
-    };
-  }
-  var Dimensions = class {
-    constructor(wrapper, content, { autoResize = true, debounce: debounceValue = 250 } = {}) {
-      this.wrapper = wrapper;
-      this.content = content;
-      if (autoResize) {
-        this.debouncedResize = debounce(this.resize, debounceValue);
-        if (this.wrapper instanceof Window) {
-          window.addEventListener("resize", this.debouncedResize, false);
-        } else {
-          this.wrapperResizeObserver = new ResizeObserver(this.debouncedResize);
-          this.wrapperResizeObserver.observe(this.wrapper);
+  var i = (o, u) => () => (u || o((u = { exports: {} }).exports, u), u.exports);
+  var L = i((Q, Z) => {
+    (function(o, u) {
+      typeof Q == "object" && typeof Z != "undefined" ? Z.exports = u() : typeof define == "function" && define.amd ? define(u) : (o || self).virtualScroll = u();
+    })(Q, function() {
+      var o = 0;
+      function u(K) {
+        return "__private_" + o++ + "_" + K;
+      }
+      function h(K, j) {
+        if (!Object.prototype.hasOwnProperty.call(K, j)) throw new TypeError("attempted to use private field on non-instance");
+        return K;
+      }
+      function b() {
+      }
+      b.prototype = { on: function(K, j, n) {
+        var y = this.e || (this.e = {});
+        return (y[K] || (y[K] = [])).push({ fn: j, ctx: n }), this;
+      }, once: function(K, j, n) {
+        var y = this;
+        function c() {
+          y.off(K, c), j.apply(n, arguments);
         }
-        this.contentResizeObserver = new ResizeObserver(this.debouncedResize);
-        this.contentResizeObserver.observe(this.content);
-      }
-      this.resize();
-    }
-    width = 0;
-    height = 0;
-    scrollHeight = 0;
-    scrollWidth = 0;
-    // These are instanciated in the constructor as they need information from the options
-    debouncedResize;
-    wrapperResizeObserver;
-    contentResizeObserver;
-    destroy() {
-      this.wrapperResizeObserver?.disconnect();
-      this.contentResizeObserver?.disconnect();
-      if (this.wrapper === window && this.debouncedResize) {
-        window.removeEventListener("resize", this.debouncedResize, false);
-      }
-    }
-    resize = () => {
-      this.onWrapperResize();
-      this.onContentResize();
-    };
-    onWrapperResize = () => {
-      if (this.wrapper instanceof Window) {
-        this.width = window.innerWidth;
-        this.height = window.innerHeight;
-      } else {
-        this.width = this.wrapper.clientWidth;
-        this.height = this.wrapper.clientHeight;
-      }
-    };
-    onContentResize = () => {
-      if (this.wrapper instanceof Window) {
-        this.scrollHeight = this.content.scrollHeight;
-        this.scrollWidth = this.content.scrollWidth;
-      } else {
-        this.scrollHeight = this.wrapper.scrollHeight;
-        this.scrollWidth = this.wrapper.scrollWidth;
-      }
-    };
-    get limit() {
-      return {
-        x: this.scrollWidth - this.width,
-        y: this.scrollHeight - this.height
-      };
-    }
-  };
-  var Emitter = class {
-    events = {};
-    /**
-     * Emit an event with the given data
-     * @param event Event name
-     * @param args Data to pass to the event handlers
-     */
-    emit(event, ...args) {
-      const callbacks = this.events[event] || [];
-      for (let i = 0, length = callbacks.length; i < length; i++) {
-        callbacks[i]?.(...args);
-      }
-    }
-    /**
-     * Add a callback to the event
-     * @param event Event name
-     * @param cb Callback function
-     * @returns Unsubscribe function
-     */
-    on(event, cb) {
-      if (this.events[event]) {
-        this.events[event].push(cb);
-      } else {
-        this.events[event] = [cb];
-      }
-      return () => {
-        this.events[event] = this.events[event]?.filter((i) => cb !== i);
-      };
-    }
-    /**
-     * Remove a callback from the event
-     * @param event Event name
-     * @param callback Callback function
-     */
-    off(event, callback) {
-      this.events[event] = this.events[event]?.filter((i) => callback !== i);
-    }
-    /**
-     * Remove all event listeners and clean up
-     */
-    destroy() {
-      this.events = {};
-    }
-  };
-  var LINE_HEIGHT = 100 / 6;
-  var listenerOptions = { passive: false };
-  function getDeltaMultiplier(deltaMode, size) {
-    if (deltaMode === 1) return LINE_HEIGHT;
-    if (deltaMode === 2) return size;
-    return 1;
-  }
-  var VirtualScroll = class {
-    constructor(element, options = { wheelMultiplier: 1, touchMultiplier: 1 }) {
-      this.element = element;
-      this.options = options;
-      window.addEventListener("resize", this.onWindowResize, false);
-      this.onWindowResize();
-      this.element.addEventListener("wheel", this.onWheel, listenerOptions);
-      this.element.addEventListener(
-        "touchstart",
-        this.onTouchStart,
-        listenerOptions
-      );
-      this.element.addEventListener(
-        "touchmove",
-        this.onTouchMove,
-        listenerOptions
-      );
-      this.element.addEventListener("touchend", this.onTouchEnd, listenerOptions);
-    }
-    touchStart = {
-      x: 0,
-      y: 0
-    };
-    lastDelta = {
-      x: 0,
-      y: 0
-    };
-    window = {
-      width: 0,
-      height: 0
-    };
-    emitter = new Emitter();
-    /**
-     * Add an event listener for the given event and callback
-     *
-     * @param event Event name
-     * @param callback Callback function
-     */
-    on(event, callback) {
-      return this.emitter.on(event, callback);
-    }
-    /** Remove all event listeners and clean up */
-    destroy() {
-      this.emitter.destroy();
-      window.removeEventListener("resize", this.onWindowResize, false);
-      this.element.removeEventListener("wheel", this.onWheel, listenerOptions);
-      this.element.removeEventListener(
-        "touchstart",
-        this.onTouchStart,
-        listenerOptions
-      );
-      this.element.removeEventListener(
-        "touchmove",
-        this.onTouchMove,
-        listenerOptions
-      );
-      this.element.removeEventListener(
-        "touchend",
-        this.onTouchEnd,
-        listenerOptions
-      );
-    }
-    /**
-     * Event handler for 'touchstart' event
-     *
-     * @param event Touch event
-     */
-    onTouchStart = (event) => {
-      const { clientX, clientY } = event.targetTouches ? event.targetTouches[0] : event;
-      this.touchStart.x = clientX;
-      this.touchStart.y = clientY;
-      this.lastDelta = {
-        x: 0,
-        y: 0
-      };
-      this.emitter.emit("scroll", {
-        deltaX: 0,
-        deltaY: 0,
-        event
-      });
-    };
-    /** Event handler for 'touchmove' event */
-    onTouchMove = (event) => {
-      const { clientX, clientY } = event.targetTouches ? event.targetTouches[0] : event;
-      const deltaX = -(clientX - this.touchStart.x) * this.options.touchMultiplier;
-      const deltaY = -(clientY - this.touchStart.y) * this.options.touchMultiplier;
-      this.touchStart.x = clientX;
-      this.touchStart.y = clientY;
-      this.lastDelta = {
-        x: deltaX,
-        y: deltaY
-      };
-      this.emitter.emit("scroll", {
-        deltaX,
-        deltaY,
-        event
-      });
-    };
-    onTouchEnd = (event) => {
-      this.emitter.emit("scroll", {
-        deltaX: this.lastDelta.x,
-        deltaY: this.lastDelta.y,
-        event
-      });
-    };
-    /** Event handler for 'wheel' event */
-    onWheel = (event) => {
-      let { deltaX, deltaY, deltaMode } = event;
-      const multiplierX = getDeltaMultiplier(deltaMode, this.window.width);
-      const multiplierY = getDeltaMultiplier(deltaMode, this.window.height);
-      deltaX *= multiplierX;
-      deltaY *= multiplierY;
-      deltaX *= this.options.wheelMultiplier;
-      deltaY *= this.options.wheelMultiplier;
-      this.emitter.emit("scroll", { deltaX, deltaY, event });
-    };
-    onWindowResize = () => {
-      this.window = {
-        width: window.innerWidth,
-        height: window.innerHeight
-      };
-    };
-  };
-  var defaultEasing = (t) => Math.min(1, 1.001 - 2 ** (-10 * t));
-  var Lenis = class {
-    _isScrolling = false;
-    // true when scroll is animating
-    _isStopped = false;
-    // true if user should not be able to scroll - enable/disable programmatically
-    _isLocked = false;
-    // same as isStopped but enabled/disabled when scroll reaches target
-    _preventNextNativeScrollEvent = false;
-    _resetVelocityTimeout = null;
-    _rafId = null;
-    /**
-     * Whether or not the user is touching the screen
-     */
-    isTouching;
-    /**
-     * The time in ms since the lenis instance was created
-     */
-    time = 0;
-    /**
-     * User data that will be forwarded through the scroll event
-     *
-     * @example
-     * lenis.scrollTo(100, {
-     *   userData: {
-     *     foo: 'bar'
-     *   }
-     * })
-     */
-    userData = {};
-    /**
-     * The last velocity of the scroll
-     */
-    lastVelocity = 0;
-    /**
-     * The current velocity of the scroll
-     */
-    velocity = 0;
-    /**
-     * The direction of the scroll
-     */
-    direction = 0;
-    /**
-     * The options passed to the lenis instance
-     */
-    options;
-    /**
-     * The target scroll value
-     */
-    targetScroll;
-    /**
-     * The animated scroll value
-     */
-    animatedScroll;
-    // These are instanciated here as they don't need information from the options
-    animate = new Animate();
-    emitter = new Emitter();
-    // These are instanciated in the constructor as they need information from the options
-    dimensions;
-    // This is not private because it's used in the Snap class
-    virtualScroll;
-    constructor({
-      wrapper = window,
-      content = document.documentElement,
-      eventsTarget = wrapper,
-      smoothWheel = true,
-      syncTouch = false,
-      syncTouchLerp = 0.075,
-      touchInertiaExponent = 1.7,
-      duration,
-      // in seconds
-      easing,
-      lerp: lerp2 = 0.1,
-      infinite = false,
-      orientation = "vertical",
-      // vertical, horizontal
-      gestureOrientation = orientation === "horizontal" ? "both" : "vertical",
-      // vertical, horizontal, both
-      touchMultiplier = 1,
-      wheelMultiplier = 1,
-      autoResize = true,
-      prevent,
-      virtualScroll,
-      overscroll = true,
-      autoRaf = false,
-      anchors = false,
-      autoToggle = false,
-      // https://caniuse.com/?search=transition-behavior
-      allowNestedScroll = false,
-      __experimental__naiveDimensions = false,
-      naiveDimensions = __experimental__naiveDimensions,
-      stopInertiaOnNavigate = false
-    } = {}) {
-      window.lenisVersion = version;
-      if (!wrapper || wrapper === document.documentElement) {
-        wrapper = window;
-      }
-      if (typeof duration === "number" && typeof easing !== "function") {
-        easing = defaultEasing;
-      } else if (typeof easing === "function" && typeof duration !== "number") {
-        duration = 1;
-      }
-      this.options = {
-        wrapper,
-        content,
-        eventsTarget,
-        smoothWheel,
-        syncTouch,
-        syncTouchLerp,
-        touchInertiaExponent,
-        duration,
-        easing,
-        lerp: lerp2,
-        infinite,
-        gestureOrientation,
-        orientation,
-        touchMultiplier,
-        wheelMultiplier,
-        autoResize,
-        prevent,
-        virtualScroll,
-        overscroll,
-        autoRaf,
-        anchors,
-        autoToggle,
-        allowNestedScroll,
-        naiveDimensions,
-        stopInertiaOnNavigate
-      };
-      this.dimensions = new Dimensions(wrapper, content, { autoResize });
-      this.updateClassName();
-      this.targetScroll = this.animatedScroll = this.actualScroll;
-      this.options.wrapper.addEventListener("scroll", this.onNativeScroll, false);
-      this.options.wrapper.addEventListener("scrollend", this.onScrollEnd, {
-        capture: true
-      });
-      if (this.options.anchors || this.options.stopInertiaOnNavigate) {
-        this.options.wrapper.addEventListener(
-          "click",
-          this.onClick,
-          false
-        );
-      }
-      this.options.wrapper.addEventListener(
-        "pointerdown",
-        this.onPointerDown,
-        false
-      );
-      this.virtualScroll = new VirtualScroll(eventsTarget, {
-        touchMultiplier,
-        wheelMultiplier
-      });
-      this.virtualScroll.on("scroll", this.onVirtualScroll);
-      if (this.options.autoToggle) {
-        this.checkOverflow();
-        this.rootElement.addEventListener("transitionend", this.onTransitionEnd, {
-          passive: true
-        });
-      }
-      if (this.options.autoRaf) {
-        this._rafId = requestAnimationFrame(this.raf);
-      }
-    }
-    /**
-     * Destroy the lenis instance, remove all event listeners and clean up the class name
-     */
-    destroy() {
-      this.emitter.destroy();
-      this.options.wrapper.removeEventListener(
-        "scroll",
-        this.onNativeScroll,
-        false
-      );
-      this.options.wrapper.removeEventListener("scrollend", this.onScrollEnd, {
-        capture: true
-      });
-      this.options.wrapper.removeEventListener(
-        "pointerdown",
-        this.onPointerDown,
-        false
-      );
-      if (this.options.anchors || this.options.stopInertiaOnNavigate) {
-        this.options.wrapper.removeEventListener(
-          "click",
-          this.onClick,
-          false
-        );
-      }
-      this.virtualScroll.destroy();
-      this.dimensions.destroy();
-      this.cleanUpClassName();
-      if (this._rafId) {
-        cancelAnimationFrame(this._rafId);
-      }
-    }
-    on(event, callback) {
-      return this.emitter.on(event, callback);
-    }
-    off(event, callback) {
-      return this.emitter.off(event, callback);
-    }
-    onScrollEnd = (e) => {
-      if (!(e instanceof CustomEvent)) {
-        if (this.isScrolling === "smooth" || this.isScrolling === false) {
-          e.stopPropagation();
-        }
-      }
-    };
-    dispatchScrollendEvent = () => {
-      this.options.wrapper.dispatchEvent(
-        new CustomEvent("scrollend", {
-          bubbles: this.options.wrapper === window,
-          // cancelable: false,
-          detail: {
-            lenisScrollEnd: true
-          }
-        })
-      );
-    };
-    get overflow() {
-      const property = this.isHorizontal ? "overflow-x" : "overflow-y";
-      return getComputedStyle(this.rootElement)[property];
-    }
-    checkOverflow() {
-      if (["hidden", "clip"].includes(this.overflow)) {
-        this.internalStop();
-      } else {
-        this.internalStart();
-      }
-    }
-    onTransitionEnd = (event) => {
-      if (event.propertyName.includes("overflow")) {
-        this.checkOverflow();
-      }
-    };
-    setScroll(scroll) {
-      if (this.isHorizontal) {
-        this.options.wrapper.scrollTo({ left: scroll, behavior: "instant" });
-      } else {
-        this.options.wrapper.scrollTo({ top: scroll, behavior: "instant" });
-      }
-    }
-    onClick = (event) => {
-      const path = event.composedPath();
-      const anchorElements = path.filter(
-        (node) => node instanceof HTMLAnchorElement && node.getAttribute("href")
-      );
-      if (this.options.anchors) {
-        const anchor = anchorElements.find(
-          (node) => node.getAttribute("href")?.includes("#")
-        );
-        if (anchor) {
-          const href = anchor.getAttribute("href");
-          if (href) {
-            const options = typeof this.options.anchors === "object" && this.options.anchors ? this.options.anchors : void 0;
-            const target = `#${href.split("#")[1]}`;
-            this.scrollTo(target, options);
-          }
-        }
-      }
-      if (this.options.stopInertiaOnNavigate) {
-        const internalLink = anchorElements.find(
-          (node) => node.host === window.location.host
-        );
-        if (internalLink) {
-          this.reset();
-        }
-      }
-    };
-    onPointerDown = (event) => {
-      if (event.button === 1) {
-        this.reset();
-      }
-    };
-    onVirtualScroll = (data) => {
-      if (typeof this.options.virtualScroll === "function" && this.options.virtualScroll(data) === false)
-        return;
-      const { deltaX, deltaY, event } = data;
-      this.emitter.emit("virtual-scroll", { deltaX, deltaY, event });
-      if (event.ctrlKey) return;
-      if (event.lenisStopPropagation) return;
-      const isTouch = event.type.includes("touch");
-      const isWheel = event.type.includes("wheel");
-      this.isTouching = event.type === "touchstart" || event.type === "touchmove";
-      const isClickOrTap = deltaX === 0 && deltaY === 0;
-      const isTapToStop = this.options.syncTouch && isTouch && event.type === "touchstart" && isClickOrTap && !this.isStopped && !this.isLocked;
-      if (isTapToStop) {
-        this.reset();
-        return;
-      }
-      const isUnknownGesture = this.options.gestureOrientation === "vertical" && deltaY === 0 || this.options.gestureOrientation === "horizontal" && deltaX === 0;
-      if (isClickOrTap || isUnknownGesture) {
-        return;
-      }
-      let composedPath = event.composedPath();
-      composedPath = composedPath.slice(0, composedPath.indexOf(this.rootElement));
-      const prevent = this.options.prevent;
-      const gestureOrientation = Math.abs(deltaX) >= Math.abs(deltaY) ? "horizontal" : "vertical";
-      if (composedPath.find(
-        (node) => node instanceof HTMLElement && (typeof prevent === "function" && prevent?.(node) || node.hasAttribute?.("data-lenis-prevent") || gestureOrientation === "vertical" && node.hasAttribute?.("data-lenis-prevent-vertical") || gestureOrientation === "horizontal" && node.hasAttribute?.("data-lenis-prevent-horizontal") || isTouch && node.hasAttribute?.("data-lenis-prevent-touch") || isWheel && node.hasAttribute?.("data-lenis-prevent-wheel") || this.options.allowNestedScroll && this.hasNestedScroll(node, {
-          deltaX,
-          deltaY
-        }))
-      ))
-        return;
-      if (this.isStopped || this.isLocked) {
-        if (event.cancelable) {
-          event.preventDefault();
-        }
-        return;
-      }
-      const isSmooth = this.options.syncTouch && isTouch || this.options.smoothWheel && isWheel;
-      if (!isSmooth) {
-        this.isScrolling = "native";
-        this.animate.stop();
-        event.lenisStopPropagation = true;
-        return;
-      }
-      let delta = deltaY;
-      if (this.options.gestureOrientation === "both") {
-        delta = Math.abs(deltaY) > Math.abs(deltaX) ? deltaY : deltaX;
-      } else if (this.options.gestureOrientation === "horizontal") {
-        delta = deltaX;
-      }
-      if (!this.options.overscroll || this.options.infinite || this.options.wrapper !== window && this.limit > 0 && (this.animatedScroll > 0 && this.animatedScroll < this.limit || this.animatedScroll === 0 && deltaY > 0 || this.animatedScroll === this.limit && deltaY < 0)) {
-        event.lenisStopPropagation = true;
-      }
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-      const isSyncTouch = isTouch && this.options.syncTouch;
-      const isTouchEnd = isTouch && event.type === "touchend";
-      const hasTouchInertia = isTouchEnd;
-      if (hasTouchInertia) {
-        delta = Math.sign(this.velocity) * Math.abs(this.velocity) ** this.options.touchInertiaExponent;
-      }
-      this.scrollTo(this.targetScroll + delta, {
-        programmatic: false,
-        ...isSyncTouch ? {
-          lerp: hasTouchInertia ? this.options.syncTouchLerp : 1
-        } : {
-          lerp: this.options.lerp,
-          duration: this.options.duration,
-          easing: this.options.easing
-        }
-      });
-    };
-    /**
-     * Force lenis to recalculate the dimensions
-     */
-    resize() {
-      this.dimensions.resize();
-      this.animatedScroll = this.targetScroll = this.actualScroll;
-      this.emit();
-    }
-    emit() {
-      this.emitter.emit("scroll", this);
-    }
-    onNativeScroll = () => {
-      if (this._resetVelocityTimeout !== null) {
-        clearTimeout(this._resetVelocityTimeout);
-        this._resetVelocityTimeout = null;
-      }
-      if (this._preventNextNativeScrollEvent) {
-        this._preventNextNativeScrollEvent = false;
-        return;
-      }
-      if (this.isScrolling === false || this.isScrolling === "native") {
-        const lastScroll = this.animatedScroll;
-        this.animatedScroll = this.targetScroll = this.actualScroll;
-        this.lastVelocity = this.velocity;
-        this.velocity = this.animatedScroll - lastScroll;
-        this.direction = Math.sign(
-          this.animatedScroll - lastScroll
-        );
-        if (!this.isStopped) {
-          this.isScrolling = "native";
-        }
-        this.emit();
-        if (this.velocity !== 0) {
-          this._resetVelocityTimeout = setTimeout(() => {
-            this.lastVelocity = this.velocity;
-            this.velocity = 0;
-            this.isScrolling = false;
-            this.emit();
-          }, 400);
-        }
-      }
-    };
-    reset() {
-      this.isLocked = false;
-      this.isScrolling = false;
-      this.animatedScroll = this.targetScroll = this.actualScroll;
-      this.lastVelocity = this.velocity = 0;
-      this.animate.stop();
-    }
-    /**
-     * Start lenis scroll after it has been stopped
-     */
-    start() {
-      if (!this.isStopped) return;
-      if (this.options.autoToggle) {
-        this.rootElement.style.removeProperty("overflow");
-        return;
-      }
-      this.internalStart();
-    }
-    internalStart() {
-      if (!this.isStopped) return;
-      this.reset();
-      this.isStopped = false;
-      this.emit();
-    }
-    /**
-     * Stop lenis scroll
-     */
-    stop() {
-      if (this.isStopped) return;
-      if (this.options.autoToggle) {
-        this.rootElement.style.setProperty("overflow", "clip");
-        return;
-      }
-      this.internalStop();
-    }
-    internalStop() {
-      if (this.isStopped) return;
-      this.reset();
-      this.isStopped = true;
-      this.emit();
-    }
-    /**
-     * RequestAnimationFrame for lenis
-     *
-     * @param time The time in ms from an external clock like `requestAnimationFrame` or Tempus
-     */
-    raf = (time) => {
-      const deltaTime = time - (this.time || time);
-      this.time = time;
-      this.animate.advance(deltaTime * 1e-3);
-      if (this.options.autoRaf) {
-        this._rafId = requestAnimationFrame(this.raf);
-      }
-    };
-    /**
-     * Scroll to a target value
-     *
-     * @param target The target value to scroll to
-     * @param options The options for the scroll
-     *
-     * @example
-     * lenis.scrollTo(100, {
-     *   offset: 100,
-     *   duration: 1,
-     *   easing: (t) => 1 - Math.cos((t * Math.PI) / 2),
-     *   lerp: 0.1,
-     *   onStart: () => {
-     *     console.log('onStart')
-     *   },
-     *   onComplete: () => {
-     *     console.log('onComplete')
-     *   },
-     * })
-     */
-    scrollTo(_target, {
-      offset = 0,
-      immediate = false,
-      lock = false,
-      programmatic = true,
-      // called from outside of the class
-      lerp: lerp2 = programmatic ? this.options.lerp : void 0,
-      duration = programmatic ? this.options.duration : void 0,
-      easing = programmatic ? this.options.easing : void 0,
-      onStart,
-      onComplete,
-      force = false,
-      // scroll even if stopped
-      userData
-    } = {}) {
-      if ((this.isStopped || this.isLocked) && !force) return;
-      let target = _target;
-      let adjustedOffset = offset;
-      if (typeof target === "string" && ["top", "left", "start", "#"].includes(target)) {
-        target = 0;
-      } else if (typeof target === "string" && ["bottom", "right", "end"].includes(target)) {
-        target = this.limit;
-      } else {
-        let node = null;
-        if (typeof target === "string") {
-          node = document.querySelector(target);
-          if (!node) {
-            if (target === "#top") {
-              target = 0;
-            } else {
-              console.warn("Lenis: Target not found", target);
+        return c._ = j, this.on(K, c, n);
+      }, emit: function(K) {
+        for (var j = [].slice.call(arguments, 1), n = ((this.e || (this.e = {}))[K] || []).slice(), y = 0, c = n.length; y < c; y++) n[y].fn.apply(n[y].ctx, j);
+        return this;
+      }, off: function(K, j) {
+        var n = this.e || (this.e = {}), y = n[K], c = [];
+        if (y && j) for (var X = 0, P = y.length; X < P; X++) y[X].fn !== j && y[X].fn._ !== j && c.push(y[X]);
+        return c.length ? n[K] = c : delete n[K], this;
+      } };
+      var _ = b;
+      _.TinyEmitter = b;
+      var f, E = "virtualscroll", Y = u("options"), s = u("el"), M = u("emitter"), v = u("event"), k = u("touchStart"), l = u("bodyTouchAction");
+      return function() {
+        function K(n) {
+          var y = this;
+          Object.defineProperty(this, Y, { writable: true, value: void 0 }), Object.defineProperty(this, s, { writable: true, value: void 0 }), Object.defineProperty(this, M, { writable: true, value: void 0 }), Object.defineProperty(this, v, { writable: true, value: void 0 }), Object.defineProperty(this, k, { writable: true, value: void 0 }), Object.defineProperty(this, l, { writable: true, value: void 0 }), this._onWheel = function(c) {
+            var X = h(y, Y)[Y], P = h(y, v)[v];
+            P.deltaX = c.wheelDeltaX || -1 * c.deltaX, P.deltaY = c.wheelDeltaY || -1 * c.deltaY, f.isFirefox && c.deltaMode === 1 && (P.deltaX *= X.firefoxMultiplier, P.deltaY *= X.firefoxMultiplier), P.deltaX *= X.mouseMultiplier, P.deltaY *= X.mouseMultiplier, y._notify(c);
+          }, this._onMouseWheel = function(c) {
+            var X = h(y, v)[v];
+            X.deltaX = c.wheelDeltaX ? c.wheelDeltaX : 0, X.deltaY = c.wheelDeltaY ? c.wheelDeltaY : c.wheelDelta, y._notify(c);
+          }, this._onTouchStart = function(c) {
+            var X = c.targetTouches ? c.targetTouches[0] : c;
+            h(y, k)[k].x = X.pageX, h(y, k)[k].y = X.pageY;
+          }, this._onTouchMove = function(c) {
+            var X = h(y, Y)[Y];
+            X.preventTouch && !c.target.classList.contains(X.unpreventTouchClass) && c.preventDefault();
+            var P = h(y, v)[v], q = c.targetTouches ? c.targetTouches[0] : c;
+            P.deltaX = (q.pageX - h(y, k)[k].x) * X.touchMultiplier, P.deltaY = (q.pageY - h(y, k)[k].y) * X.touchMultiplier, h(y, k)[k].x = q.pageX, h(y, k)[k].y = q.pageY, y._notify(c);
+          }, this._onKeyDown = function(c) {
+            var X = h(y, v)[v];
+            X.deltaX = X.deltaY = 0;
+            var P = window.innerHeight - 40;
+            switch (c.keyCode) {
+              case 37:
+              case 38:
+                X.deltaY = h(y, Y)[Y].keyStep;
+                break;
+              case 39:
+              case 40:
+                X.deltaY = -h(y, Y)[Y].keyStep;
+                break;
+              case 32:
+                X.deltaY = P * (c.shiftKey ? 1 : -1);
+                break;
+              default:
+                return;
             }
-          }
-        } else if (target instanceof HTMLElement && target?.nodeType) {
-          node = target;
+            y._notify(c);
+          }, h(this, s)[s] = window, n && n.el && (h(this, s)[s] = n.el, delete n.el), f || (f = { hasWheelEvent: "onwheel" in document, hasMouseWheelEvent: "onmousewheel" in document, hasTouch: "ontouchstart" in document, hasTouchWin: navigator.msMaxTouchPoints && navigator.msMaxTouchPoints > 1, hasPointer: !!window.navigator.msPointerEnabled, hasKeyDown: "onkeydown" in document, isFirefox: navigator.userAgent.indexOf("Firefox") > -1 }), h(this, Y)[Y] = Object.assign({ mouseMultiplier: 1, touchMultiplier: 2, firefoxMultiplier: 15, keyStep: 120, preventTouch: false, unpreventTouchClass: "vs-touchmove-allowed", useKeyboard: true, useTouch: true }, n), h(this, M)[M] = new _(), h(this, v)[v] = { y: 0, x: 0, deltaX: 0, deltaY: 0 }, h(this, k)[k] = { x: null, y: null }, h(this, l)[l] = null, h(this, Y)[Y].passive !== void 0 && (this.listenerOptions = { passive: h(this, Y)[Y].passive });
         }
-        if (node) {
-          if (this.options.wrapper !== window) {
-            const wrapperRect = this.rootElement.getBoundingClientRect();
-            adjustedOffset -= this.isHorizontal ? wrapperRect.left : wrapperRect.top;
-          }
-          const rect = node.getBoundingClientRect();
-          target = (this.isHorizontal ? rect.left : rect.top) + this.animatedScroll;
-        }
+        var j = K.prototype;
+        return j._notify = function(n) {
+          var y = h(this, v)[v];
+          y.x += y.deltaX, y.y += y.deltaY, h(this, M)[M].emit(E, { x: y.x, y: y.y, deltaX: y.deltaX, deltaY: y.deltaY, originalEvent: n });
+        }, j._bind = function() {
+          f.hasWheelEvent && h(this, s)[s].addEventListener("wheel", this._onWheel, this.listenerOptions), f.hasMouseWheelEvent && h(this, s)[s].addEventListener("mousewheel", this._onMouseWheel, this.listenerOptions), f.hasTouch && h(this, Y)[Y].useTouch && (h(this, s)[s].addEventListener("touchstart", this._onTouchStart, this.listenerOptions), h(this, s)[s].addEventListener("touchmove", this._onTouchMove, this.listenerOptions)), f.hasPointer && f.hasTouchWin && (h(this, l)[l] = document.body.style.msTouchAction, document.body.style.msTouchAction = "none", h(this, s)[s].addEventListener("MSPointerDown", this._onTouchStart, true), h(this, s)[s].addEventListener("MSPointerMove", this._onTouchMove, true)), f.hasKeyDown && h(this, Y)[Y].useKeyboard && document.addEventListener("keydown", this._onKeyDown);
+        }, j._unbind = function() {
+          f.hasWheelEvent && h(this, s)[s].removeEventListener("wheel", this._onWheel), f.hasMouseWheelEvent && h(this, s)[s].removeEventListener("mousewheel", this._onMouseWheel), f.hasTouch && (h(this, s)[s].removeEventListener("touchstart", this._onTouchStart), h(this, s)[s].removeEventListener("touchmove", this._onTouchMove)), f.hasPointer && f.hasTouchWin && (document.body.style.msTouchAction = h(this, l)[l], h(this, s)[s].removeEventListener("MSPointerDown", this._onTouchStart, true), h(this, s)[s].removeEventListener("MSPointerMove", this._onTouchMove, true)), f.hasKeyDown && h(this, Y)[Y].useKeyboard && document.removeEventListener("keydown", this._onKeyDown);
+        }, j.on = function(n, y) {
+          h(this, M)[M].on(E, n, y);
+          var c = h(this, M)[M].e;
+          c && c[E] && c[E].length === 1 && this._bind();
+        }, j.off = function(n, y) {
+          h(this, M)[M].off(E, n, y);
+          var c = h(this, M)[M].e;
+          (!c[E] || c[E].length <= 0) && this._unbind();
+        }, j.destroy = function() {
+          h(this, M)[M].off(), this._unbind();
+        }, K;
+      }();
+    });
+  });
+  var w = N(L(), 1);
+  function J(o, u, h, b) {
+    let _ = 1 - Math.exp(-h * b);
+    return o + (u - o) * _;
+  }
+  function W(o, u) {
+    let h = o % u;
+    if (Math.abs(h) > u / 2) h = h > 0 ? h - u : h + u;
+    return h;
+  }
+  var m = { infinite: true, snap: true, variableWidth: false, vertical: false, dragSensitivity: 5e-3, lerpFactor: 0.3, scrollSensitivity: 1, snapStrength: 0.1, speedDecay: 0.85, bounceLimit: 1, virtualScroll: { mouseMultiplier: 0.5, touchMultiplier: 2, firefoxMultiplier: 30, useKeyboard: false, passive: true }, setOffset: ({ itemWidth: o, wrapperWidth: u, itemHeight: h, wrapperHeight: b, vertical: _ }) => _ ? h : o, scrollInput: false };
+  var $ = class {
+    speed = 0;
+    #M = 0;
+    #y = 0;
+    #Y = 0;
+    deltaTime = 0;
+    #h = true;
+    #o = false;
+    #u = 0;
+    #X = 0;
+    config;
+    wrapper;
+    items;
+    viewport;
+    itemWidths = [];
+    itemOffsets = [];
+    itemHeights = [];
+    itemHeightOffsets = [];
+    isDragging = false;
+    isTouching = false;
+    dragStart = 0;
+    dragStartTarget = 0;
+    isVisible = false;
+    current = 0;
+    target = 0;
+    maxScroll = 0;
+    resizeTimeout;
+    virtualScroll;
+    observer;
+    touchStartY;
+    touchStartX;
+    touchPreviousX;
+    touchPreviousY;
+    scrollDirection;
+    parallaxValues;
+    webglValue = 0;
+    onSlideChange;
+    onResize;
+    onUpdate;
+    constructor(o, u = {}) {
+      if (this.config = { ...m, ...u }, u.onSlideChange) this.onSlideChange = u.onSlideChange;
+      if (u.onResize) this.onResize = u.onResize;
+      if (u.onUpdate) this.onUpdate = u.onUpdate;
+      if (delete this.config.onSlideChange, delete this.config.onResize, delete this.config.onUpdate, this.wrapper = o, this.items = [...o.children], this.current = 0, this.target = 0, this.isDragging = false, this.isTouching = false, this.dragStart = 0, this.dragStartTarget = 0, this.isVisible = false, this.#u = 0, this.#X = 0, this.#n(), this.#l(), this.#W(), this.wrapper.style.cursor = "grab", this.#n(), this.#q(), this.config.variableWidth && !this.config.infinite && this.items.length > 0) {
+        let h = this.#s(0);
+        this.target = h, this.current = h, this.#P();
       }
-      if (typeof target !== "number") return;
-      target += adjustedOffset;
-      target = Math.round(target);
-      if (this.options.infinite) {
-        if (programmatic) {
-          this.targetScroll = this.animatedScroll = this.scroll;
-          const distance = target - this.animatedScroll;
-          if (distance > this.limit / 2) {
-            target -= this.limit;
-          } else if (distance < -this.limit / 2) {
-            target += this.limit;
-          }
-        }
-      } else {
-        target = clamp(0, target, this.limit);
-      }
-      if (target === this.targetScroll) {
-        onStart?.(this);
-        onComplete?.(this);
-        return;
-      }
-      this.userData = userData ?? {};
-      if (immediate) {
-        this.animatedScroll = this.targetScroll = target;
-        this.setScroll(this.scroll);
-        this.reset();
-        this.preventNextNativeScrollEvent();
-        this.emit();
-        onComplete?.(this);
-        this.userData = {};
-        requestAnimationFrame(() => {
-          this.dispatchScrollendEvent();
+    }
+    #l() {
+      let o = { root: null, rootMargin: "50px", threshold: 0 };
+      this.observer = new IntersectionObserver((u) => {
+        u.forEach((h) => {
+          this.isVisible = h.isIntersecting;
         });
-        return;
+      }, o), this.observer.observe(this.wrapper);
+    }
+    #n() {
+      let o = this.items.map((s) => s.getBoundingClientRect().width), u = this.items.map((s) => s.getBoundingClientRect().height), h = this.wrapper.clientWidth, b = this.wrapper.clientHeight, _ = o.reduce((s, M) => s + M, 0), f = u.reduce((s, M) => s + M, 0), E = 0;
+      this.itemOffsets = o.map((s) => {
+        let M = E;
+        return E += s, M;
+      }), this.itemWidths = o;
+      let Y = 0;
+      if (this.itemHeightOffsets = u.map((s) => {
+        let M = Y;
+        return Y += s, M;
+      }), this.itemHeights = u, this.viewport = { itemWidth: o[0] ?? 0, wrapperWidth: h, totalWidth: _, itemHeight: u[0] ?? 0, wrapperHeight: b, totalHeight: f, vertical: this.config.vertical }, this.#y = this.config.setOffset(this.viewport), this.config.variableWidth) if (this.config.vertical) this.maxScroll = -(this.viewport.totalHeight - this.#y);
+      else this.maxScroll = -(this.viewport.totalWidth - this.#y);
+      else {
+        let s = this.config.vertical ? this.viewport.itemHeight || 1 : this.viewport.itemWidth || 1, M = this.config.vertical ? this.viewport.totalHeight : this.viewport.totalWidth;
+        this.maxScroll = -(M - this.#y) / s;
       }
-      if (!programmatic) {
-        this.targetScroll = target;
+      queueMicrotask(() => {
+        this.onResize?.(this);
+      });
+    }
+    #W() {
+      let o = (s) => this.#c(s), u = (s) => this.#b(s), h = () => this.#_();
+      this.wrapper.addEventListener("mousedown", o), window.addEventListener("mousemove", u), window.addEventListener("mouseup", h);
+      let b = 5, _ = (s) => {
+        let M = s.touches[0];
+        this.touchStartY = M.clientY, this.touchStartX = M.clientX, this.touchPreviousX = M.clientX, this.touchPreviousY = M.clientY, this.scrollDirection = void 0, this.isTouching = true, this.#c(M);
+      }, f = (s) => {
+        if (!this.isTouching || this.#o) return;
+        let M = s.touches[0], v = Math.abs(M.clientY - this.touchStartY), k = Math.abs(M.clientX - this.touchStartX);
+        if (!this.scrollDirection && (k > b || v > b)) this.scrollDirection = k > v ? "horizontal" : "vertical";
+        if (this.config.vertical ? this.scrollDirection === "vertical" : this.scrollDirection === "horizontal") if (s.preventDefault(), this.#b(M), this.config.vertical) this.touchPreviousY = M.clientY;
+        else this.touchPreviousX = M.clientX;
+      }, E = () => {
+        this.isTouching = false, this.scrollDirection = void 0, this.touchPreviousX = void 0, this.touchPreviousY = void 0, this.#_();
+      };
+      this.wrapper.addEventListener("touchstart", _), window.addEventListener("touchmove", f, { passive: false }), window.addEventListener("touchend", E), new ResizeObserver(() => {
+        if (this.resizeTimeout) clearTimeout(this.resizeTimeout);
+        this.resizeTimeout = setTimeout(() => this.resize(), 10);
+      }).observe(this.wrapper);
+    }
+    #j(o) {
+      if (!this.config.infinite) {
+        let u = this.config.vertical ? this.viewport.itemHeight : this.viewport.itemWidth, h = this.config.variableWidth && u ? this.config.bounceLimit * u : this.config.bounceLimit;
+        if (o > h) return h;
+        else if (o < this.maxScroll - h) return this.maxScroll - h;
       }
-      if (typeof duration === "number" && typeof easing !== "function") {
-        easing = defaultEasing;
-      } else if (typeof easing === "function" && typeof duration !== "number") {
-        duration = 1;
-      }
-      this.animate.fromTo(this.animatedScroll, target, {
-        duration,
-        easing,
-        lerp: lerp2,
-        onStart: () => {
-          if (lock) this.isLocked = true;
-          this.isScrolling = "smooth";
-          onStart?.(this);
-        },
-        onUpdate: (value, completed) => {
-          this.isScrolling = "smooth";
-          this.lastVelocity = this.velocity;
-          this.velocity = value - this.animatedScroll;
-          this.direction = Math.sign(this.velocity);
-          this.animatedScroll = value;
-          this.setScroll(this.scroll);
-          if (programmatic) {
-            this.targetScroll = value;
+      return o;
+    }
+    #q() {
+      this.virtualScroll = new w.default({ ...this.config.virtualScroll, el: this.wrapper });
+      let o = 5;
+      this.virtualScroll.on((u) => {
+        if (!this.isDragging && !this.#o) {
+          if (u.touchDevice) {
+            let E = Math.abs(u.deltaY), Y = Math.abs(u.deltaX);
+            if (E < o && Y < o) return;
+            if (this.config.vertical) {
+              if (Y > E) return;
+            } else if (E > Y) return;
           }
-          if (!completed) this.emit();
-          if (completed) {
-            this.reset();
-            this.emit();
-            onComplete?.(this);
-            this.userData = {};
-            requestAnimationFrame(() => {
-              this.dispatchScrollendEvent();
-            });
-            this.preventNextNativeScrollEvent();
+          let h = this.config.vertical ? !this.config.scrollInput ? u.deltaY : Math.abs(u.deltaY) > Math.abs(u.deltaX) ? u.deltaY : u.deltaX : !this.config.scrollInput ? u.deltaX : Math.abs(u.deltaX) > Math.abs(u.deltaY) ? u.deltaX : u.deltaY, b = this.config.variableWidth ? this.config.scrollSensitivity : this.config.scrollSensitivity * 1e-3, _ = h * b, f = this.target + _;
+          if (!this.config.infinite) {
+            if (f > 0) f = 0;
+            else if (f < this.maxScroll) f = this.maxScroll;
           }
+          this.target = this.#j(f), this.speed = -_ * (this.config.variableWidth ? 0.1 : 10);
         }
       });
     }
-    preventNextNativeScrollEvent() {
-      this._preventNextNativeScrollEvent = true;
-      requestAnimationFrame(() => {
-        this._preventNextNativeScrollEvent = false;
+    #c(o) {
+      if (this.#o) return;
+      this.isDragging = true, this.dragStart = this.config.vertical ? o.clientY : o.clientX, this.dragStartTarget = this.target, this.wrapper.style.cursor = "grabbing";
+    }
+    #b(o) {
+      if (!this.isDragging || this.#o) return;
+      let u = this.config.vertical ? o.clientY - this.dragStart : o.clientX - this.dragStart, h = this.config.variableWidth ? 1 : this.config.dragSensitivity, b = this.dragStartTarget + u * h;
+      if (this.target = this.#j(b), "movementX" in o) {
+        let _ = this.config.vertical ? o.movementY : o.movementX;
+        this.speed += _ * 0.01;
+      } else {
+        let _ = this.config.vertical ? o.clientY : o.clientX, f = this.config.vertical ? this.touchPreviousY || _ : this.touchPreviousX || _, E = _ - f;
+        this.speed += E * 0.01;
+      }
+    }
+    #_() {
+      if (this.isDragging = false, this.wrapper.style.cursor = "grab", this.config.variableWidth) {
+        if (!this.config.infinite) {
+          if (this.target > 0) this.target = 0;
+          else if (this.target < this.maxScroll) this.target = this.maxScroll;
+        }
+        if (this.config.snap) this.target = this.#v(this.target);
+      } else if (!this.config.infinite) {
+        if (this.target > 0) this.target = 0;
+        else if (this.target < this.maxScroll) this.target = this.maxScroll;
+        else if (this.config.snap) {
+          let o = Math.round(this.target);
+          this.target = Math.min(0, Math.max(this.maxScroll, o));
+        }
+      } else if (this.config.snap) this.target = Math.round(this.target);
+    }
+    update() {
+      if (!this.isVisible || !this.#h) return;
+      let o = performance.now();
+      if (this.deltaTime = (o - this.#Y) / 1e3, this.#Y = o, this.config.snap && !this.isDragging) if (this.config.variableWidth) {
+        let h = this.#v(this.target) - this.target;
+        this.target += h * this.config.snapStrength;
+      } else {
+        let h = Math.round(this.target) - this.target;
+        this.target += h * this.config.snapStrength;
+      }
+      if (this.current = J(this.current, this.target, 1 / this.config.lerpFactor, this.deltaTime), this.config.infinite) if (this.config.variableWidth) {
+        let u = this.config.vertical ? this.viewport.wrapperHeight / 2 : this.viewport.wrapperWidth / 2, h = this.#E(-this.current + u), b = this.#K(h);
+        this.#f(b), this.#Z();
+      } else {
+        let u = Math.round(-this.current), h = this.items.length, b = (u % h + h) % h;
+        this.#f(b), this.#Q();
+      }
+      else if (this.config.variableWidth) {
+        let u = this.config.vertical ? this.viewport.wrapperHeight / 2 : this.viewport.wrapperWidth / 2, h = this.config.vertical ? this.viewport.totalHeight : this.viewport.totalWidth, b = Math.max(0, Math.min(-this.current + u, h));
+        this.#f(this.#K(b)), this.#P();
+      } else this.#f(Math.round(Math.abs(this.current))), this.#J();
+      this.#$(), this.onUpdate?.(this);
+    }
+    #J() {
+      this.parallaxValues = this.items.map((o, u) => {
+        let h = this.config.vertical ? this.current * this.viewport.itemHeight : this.current * this.viewport.itemWidth, b = this.config.vertical ? `translateY(${h}px)` : `translateX(${h}px)`;
+        return o.style.transform = b, h;
       });
     }
-    hasNestedScroll(node, { deltaX, deltaY }) {
-      const time = Date.now();
-      if (!node._lenis) node._lenis = {};
-      const cache = node._lenis;
-      let hasOverflowX;
-      let hasOverflowY;
-      let isScrollableX;
-      let isScrollableY;
-      let hasOverscrollBehaviorX;
-      let hasOverscrollBehaviorY;
-      let scrollWidth;
-      let scrollHeight;
-      let clientWidth;
-      let clientHeight;
-      if (time - (cache.time ?? 0) > 2e3) {
-        cache.time = Date.now();
-        const computedStyle = window.getComputedStyle(node);
-        cache.computedStyle = computedStyle;
-        hasOverflowX = ["auto", "overlay", "scroll"].includes(
-          computedStyle.overflowX
-        );
-        hasOverflowY = ["auto", "overlay", "scroll"].includes(
-          computedStyle.overflowY
-        );
-        hasOverscrollBehaviorX = ["auto"].includes(
-          computedStyle.overscrollBehaviorX
-        );
-        hasOverscrollBehaviorY = ["auto"].includes(
-          computedStyle.overscrollBehaviorY
-        );
-        cache.hasOverflowX = hasOverflowX;
-        cache.hasOverflowY = hasOverflowY;
-        if (!(hasOverflowX || hasOverflowY)) return false;
-        scrollWidth = node.scrollWidth;
-        scrollHeight = node.scrollHeight;
-        clientWidth = node.clientWidth;
-        clientHeight = node.clientHeight;
-        isScrollableX = scrollWidth > clientWidth;
-        isScrollableY = scrollHeight > clientHeight;
-        cache.isScrollableX = isScrollableX;
-        cache.isScrollableY = isScrollableY;
-        cache.scrollWidth = scrollWidth;
-        cache.scrollHeight = scrollHeight;
-        cache.clientWidth = clientWidth;
-        cache.clientHeight = clientHeight;
-        cache.hasOverscrollBehaviorX = hasOverscrollBehaviorX;
-        cache.hasOverscrollBehaviorY = hasOverscrollBehaviorY;
+    #Q() {
+      this.parallaxValues = this.items.map((o, u) => {
+        let h = this.current + u, b = W(h, this.items.length) - u, _ = this.config.vertical ? this.viewport.itemHeight : this.viewport.itemWidth, f = b * _, E = this.config.vertical ? `translateY(${f}px)` : `translateX(${f}px)`;
+        return o.style.transform = E, W(h, this.items.length);
+      });
+    }
+    #k(o) {
+      if (this.config.vertical) {
+        let u = this.itemHeights[o] ?? this.viewport.itemHeight ?? 0;
+        return (this.itemHeightOffsets[o] ?? 0) + u / 2;
       } else {
-        isScrollableX = cache.isScrollableX;
-        isScrollableY = cache.isScrollableY;
-        hasOverflowX = cache.hasOverflowX;
-        hasOverflowY = cache.hasOverflowY;
-        scrollWidth = cache.scrollWidth;
-        scrollHeight = cache.scrollHeight;
-        clientWidth = cache.clientWidth;
-        clientHeight = cache.clientHeight;
-        hasOverscrollBehaviorX = cache.hasOverscrollBehaviorX;
-        hasOverscrollBehaviorY = cache.hasOverscrollBehaviorY;
+        let u = this.itemWidths[o] ?? this.viewport.itemWidth ?? 0;
+        return (this.itemOffsets[o] ?? 0) + u / 2;
       }
-      if (!(hasOverflowX && isScrollableX || hasOverflowY && isScrollableY)) {
-        return false;
+    }
+    #s(o) {
+      let u = this.config.vertical ? this.viewport.totalHeight || 1 : this.viewport.totalWidth || 1, h = this.config.vertical ? this.viewport.wrapperHeight / 2 : this.viewport.wrapperWidth / 2, _ = -(this.#k(o) - h);
+      if (this.config.infinite) {
+        let f = Math.round((this.target - _) / u);
+        _ += f * u;
+      } else _ = Math.min(0, Math.max(this.maxScroll, _));
+      return _;
+    }
+    #E(o) {
+      let u = this.config.vertical ? this.viewport.totalHeight || 1 : this.viewport.totalWidth || 1;
+      return (o % u + u) % u;
+    }
+    #K(o) {
+      let u = this.config.vertical ? this.itemHeightOffsets : this.itemOffsets;
+      if (!u.length) return 0;
+      let h = this.config.vertical ? this.viewport.totalHeight || 1 : this.viewport.totalWidth || 1, b = this.config.infinite ? this.#E(o) : Math.max(0, Math.min(o, h)), _ = 0, f = Number.POSITIVE_INFINITY;
+      return u.forEach((E, Y) => {
+        let s = this.#k(Y), M = Math.abs(b - s);
+        if (M < f) f = M, _ = Y;
+      }), _;
+    }
+    #v(o) {
+      if (!(this.config.vertical ? this.itemHeightOffsets : this.itemOffsets).length) return o;
+      let h = this.config.vertical ? this.viewport.totalHeight || 1 : this.viewport.totalWidth || 1, b = this.config.vertical ? this.viewport.wrapperHeight / 2 : this.viewport.wrapperWidth / 2, _ = this.config.infinite ? this.#E(-o + b) : Math.max(0, Math.min(-o + b, h)), f = this.#K(_);
+      return this.#s(f);
+    }
+    #P() {
+      this.parallaxValues = this.items.map((o, u) => {
+        let h = this.current, b = this.config.vertical ? this.itemHeightOffsets : this.itemOffsets, _ = this.config.vertical ? `translateY(${h}px)` : `translateX(${h}px)`;
+        return o.style.transform = _, h + b[u];
+      });
+    }
+    #Z() {
+      let o = this.config.vertical ? this.viewport.totalHeight || 1 : this.viewport.totalWidth || 1;
+      this.parallaxValues = this.items.map((u, h) => {
+        let _ = (this.config.vertical ? this.itemHeightOffsets : this.itemOffsets)[h] ?? 0, f = W(this.current + _, o) - _, E = this.config.vertical ? `translateY(${f}px)` : `translateX(${f}px)`;
+        return u.style.transform = E, W(this.current + _, o);
+      });
+    }
+    #$() {
+      this.#M = J(this.#M, this.speed, 1 / this.config.lerpFactor, this.deltaTime), this.speed *= this.config.speedDecay;
+    }
+    goToNext() {
+      if (this.config.variableWidth) {
+        let o = this.config.infinite ? (this.currentSlide + 1) % this.items.length : Math.min(this.currentSlide + 1, this.items.length - 1);
+        this.target = this.#s(o);
+      } else if (!this.config.infinite) this.target = Math.max(this.maxScroll, Math.round(this.target - 1));
+      else this.target = Math.round(this.target - 1);
+    }
+    goToPrev() {
+      if (this.config.variableWidth) {
+        let o = this.config.infinite ? (this.currentSlide - 1 + this.items.length) % this.items.length : Math.max(this.currentSlide - 1, 0);
+        this.target = this.#s(o);
+      } else if (!this.config.infinite) this.target = Math.min(0, Math.round(this.target + 1));
+      else this.target = Math.round(this.target + 1);
+    }
+    goToIndex(o) {
+      if (this.config.variableWidth) {
+        let u = this.config.infinite ? (o % this.items.length + this.items.length) % this.items.length : Math.min(Math.max(o, 0), this.items.length - 1);
+        this.target = this.#s(u);
+      } else this.target = -o;
+    }
+    set snap(o) {
+      this.config.snap = o;
+    }
+    getProgress() {
+      if (this.config.variableWidth) {
+        let h = this.config.vertical ? this.viewport.totalHeight || 1 : this.viewport.totalWidth || 1;
+        return (-this.current % h + h) % h / h;
       }
-      const orientation = Math.abs(deltaX) >= Math.abs(deltaY) ? "horizontal" : "vertical";
-      let scroll;
-      let maxScroll;
-      let delta;
-      let hasOverflow;
-      let isScrollable;
-      let hasOverscrollBehavior;
-      if (orientation === "horizontal") {
-        scroll = Math.round(node.scrollLeft);
-        maxScroll = scrollWidth - clientWidth;
-        delta = deltaX;
-        hasOverflow = hasOverflowX;
-        isScrollable = isScrollableX;
-        hasOverscrollBehavior = hasOverscrollBehaviorX;
-      } else if (orientation === "vertical") {
-        scroll = Math.round(node.scrollTop);
-        maxScroll = scrollHeight - clientHeight;
-        delta = deltaY;
-        hasOverflow = hasOverflowY;
-        isScrollable = isScrollableY;
-        hasOverscrollBehavior = hasOverscrollBehaviorY;
-      } else {
-        return false;
-      }
-      if (!hasOverscrollBehavior && (scroll === maxScroll || scroll === 0)) {
-        return true;
-      }
-      const willScroll = delta > 0 ? scroll < maxScroll : scroll > 0;
-      return willScroll && hasOverflow && isScrollable;
+      let o = this.items.length;
+      return Math.abs(this.current) % o / o;
     }
-    /**
-     * The root element on which lenis is instanced
-     */
-    get rootElement() {
-      return this.options.wrapper === window ? document.documentElement : this.options.wrapper;
+    destroy() {
+      if (this.kill(), window.removeEventListener("mousemove", (o) => this.#b(o)), window.removeEventListener("mouseup", () => this.#_()), window.removeEventListener("touchmove", (o) => {
+        let u = o.touches[0];
+        this.#b(u);
+      }), window.removeEventListener("touchend", () => this.#_()), this.wrapper.removeEventListener("mousedown", (o) => this.#c(o)), this.wrapper.removeEventListener("touchstart", (o) => {
+        let u = o.touches[0];
+        this.#c(u);
+      }), this.resizeTimeout) clearTimeout(this.resizeTimeout);
+      if (this.virtualScroll && this.config.scrollInput) this.virtualScroll.destroy();
+      if (this.observer) this.observer.disconnect();
     }
-    /**
-     * The limit which is the maximum scroll value
-     */
-    get limit() {
-      if (this.options.naiveDimensions) {
-        if (this.isHorizontal) {
-          return this.rootElement.scrollWidth - this.rootElement.clientWidth;
-        }
-        return this.rootElement.scrollHeight - this.rootElement.clientHeight;
-      }
-      return this.dimensions.limit[this.isHorizontal ? "x" : "y"];
+    get currentSlide() {
+      return this.#u;
     }
-    /**
-     * Whether or not the scroll is horizontal
-     */
-    get isHorizontal() {
-      return this.options.orientation === "horizontal";
+    #f(o) {
+      if (this.#u !== o) this.#X = this.#u, this.#u = o, this.onSlideChange?.(this.#u, this.#X);
     }
-    /**
-     * The actual scroll value
-     */
-    get actualScroll() {
-      const wrapper = this.options.wrapper;
-      return this.isHorizontal ? wrapper.scrollX ?? wrapper.scrollLeft : wrapper.scrollY ?? wrapper.scrollTop;
+    kill() {
+      this.#h = false, this.items.forEach((o) => {
+        o.style.transform = "";
+      }), this.current = 0, this.target = 0, this.speed = 0, this.#M = 0, this.touchPreviousX = void 0, this.touchPreviousY = void 0, this.isTouching = false;
     }
-    /**
-     * The current scroll value
-     */
-    get scroll() {
-      return this.options.infinite ? modulo(this.animatedScroll, this.limit) : this.animatedScroll;
+    init() {
+      this.#h = true, this.#Y = performance.now();
     }
-    /**
-     * The progress of the scroll relative to the limit
-     */
+    set paused(o) {
+      this.#o = o;
+    }
+    get paused() {
+      return this.#o;
+    }
     get progress() {
-      return this.limit === 0 ? 1 : this.scroll / this.limit;
-    }
-    /**
-     * Current scroll state
-     */
-    get isScrolling() {
-      return this._isScrolling;
-    }
-    set isScrolling(value) {
-      if (this._isScrolling !== value) {
-        this._isScrolling = value;
-        this.updateClassName();
-      }
-    }
-    /**
-     * Check if lenis is stopped
-     */
-    get isStopped() {
-      return this._isStopped;
-    }
-    set isStopped(value) {
-      if (this._isStopped !== value) {
-        this._isStopped = value;
-        this.updateClassName();
-      }
-    }
-    /**
-     * Check if lenis is locked
-     */
-    get isLocked() {
-      return this._isLocked;
-    }
-    set isLocked(value) {
-      if (this._isLocked !== value) {
-        this._isLocked = value;
-        this.updateClassName();
-      }
-    }
-    /**
-     * Check if lenis is smooth scrolling
-     */
-    get isSmooth() {
-      return this.isScrolling === "smooth";
-    }
-    /**
-     * The class name applied to the wrapper element
-     */
-    get className() {
-      let className = "lenis";
-      if (this.options.autoToggle) className += " lenis-autoToggle";
-      if (this.isStopped) className += " lenis-stopped";
-      if (this.isLocked) className += " lenis-locked";
-      if (this.isScrolling) className += " lenis-scrolling";
-      if (this.isScrolling === "smooth") className += " lenis-smooth";
-      return className;
-    }
-    updateClassName() {
-      this.cleanUpClassName();
-      this.rootElement.className = `${this.rootElement.className} ${this.className}`.trim();
-    }
-    cleanUpClassName() {
-      this.rootElement.className = this.rootElement.className.replace(/lenis(-\w+)?/g, "").trim();
-    }
-  };
-
-  // node_modules/.pnpm/lenis@1.3.18-dev.1/node_modules/lenis/dist/lenis-snap.mjs
-  function debounce2(callback, delay) {
-    let timer;
-    return function(...args) {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        timer = void 0;
-        callback.apply(this, args);
-      }, delay);
-    };
-  }
-  function removeParentSticky(element) {
-    const position = getComputedStyle(element).position;
-    const isSticky = position === "sticky";
-    if (isSticky) {
-      element.style.setProperty("position", "static");
-      element.dataset.sticky = "true";
-    }
-    if (element.offsetParent) {
-      removeParentSticky(element.offsetParent);
-    }
-  }
-  function addParentSticky(element) {
-    if (element?.dataset?.sticky === "true") {
-      element.style.removeProperty("position");
-      delete element.dataset.sticky;
-    }
-    if (element.offsetParent) {
-      addParentSticky(element.offsetParent);
-    }
-  }
-  function offsetTop(element, accumulator = 0) {
-    const top = accumulator + element.offsetTop;
-    if (element.offsetParent) {
-      return offsetTop(element.offsetParent, top);
-    }
-    return top;
-  }
-  function offsetLeft(element, accumulator = 0) {
-    const left = accumulator + element.offsetLeft;
-    if (element.offsetParent) {
-      return offsetLeft(element.offsetParent, left);
-    }
-    return left;
-  }
-  function scrollTop(element, accumulator = 0) {
-    const top = accumulator + element.scrollTop;
-    if (element.offsetParent) {
-      return scrollTop(element.offsetParent, top);
-    }
-    return top + window.scrollY;
-  }
-  function scrollLeft(element, accumulator = 0) {
-    const left = accumulator + element.scrollLeft;
-    if (element.offsetParent) {
-      return scrollLeft(element.offsetParent, left);
-    }
-    return left + window.scrollX;
-  }
-  var SnapElement = class {
-    element;
-    options;
-    align;
-    // @ts-expect-error
-    rect = {};
-    wrapperResizeObserver;
-    resizeObserver;
-    debouncedWrapperResize;
-    constructor(element, {
-      align = ["start"],
-      ignoreSticky = true,
-      ignoreTransform = false
-    } = {}) {
-      this.element = element;
-      this.options = { align, ignoreSticky, ignoreTransform };
-      this.align = [align].flat();
-      this.debouncedWrapperResize = debounce2(this.onWrapperResize, 500);
-      this.wrapperResizeObserver = new ResizeObserver(this.debouncedWrapperResize);
-      this.wrapperResizeObserver.observe(document.body);
-      this.onWrapperResize();
-      this.resizeObserver = new ResizeObserver(this.onResize);
-      this.resizeObserver.observe(this.element);
-      this.setRect({
-        width: this.element.offsetWidth,
-        height: this.element.offsetHeight
-      });
-    }
-    destroy() {
-      this.wrapperResizeObserver.disconnect();
-      this.resizeObserver.disconnect();
-    }
-    setRect({
-      top,
-      left,
-      width,
-      height,
-      element
-    } = {}) {
-      top = top ?? this.rect.top;
-      left = left ?? this.rect.left;
-      width = width ?? this.rect.width;
-      height = height ?? this.rect.height;
-      element = element ?? this.rect.element;
-      if (top === this.rect.top && left === this.rect.left && width === this.rect.width && height === this.rect.height && element === this.rect.element)
-        return;
-      this.rect.top = top;
-      this.rect.y = top;
-      this.rect.width = width;
-      this.rect.height = height;
-      this.rect.left = left;
-      this.rect.x = left;
-      this.rect.bottom = top + height;
-      this.rect.right = left + width;
-    }
-    onWrapperResize = () => {
-      let top;
-      let left;
-      if (this.options.ignoreSticky) removeParentSticky(this.element);
-      if (this.options.ignoreTransform) {
-        top = offsetTop(this.element);
-        left = offsetLeft(this.element);
+      if (this.config.variableWidth) {
+        let o = this.config.vertical ? this.viewport.totalHeight || 1 : this.viewport.totalWidth || 1, u = -this.target;
+        if (this.config.infinite) return (u % o + o) % o / o;
+        else return Math.max(0, Math.min(u, o)) / o;
+      } else if (this.config.infinite) {
+        let o = -this.target, u = this.items.length;
+        return (o % u + u) % u / (u - 1);
       } else {
-        const rect = this.element.getBoundingClientRect();
-        top = rect.top + scrollTop(this.element);
-        left = rect.left + scrollLeft(this.element);
+        let o = Math.abs(this.current), u = Math.abs(this.maxScroll);
+        return Math.max(0, Math.min(1, o / u));
       }
-      if (this.options.ignoreSticky) addParentSticky(this.element);
-      this.setRect({ top, left });
-    };
-    onResize = ([entry]) => {
-      if (!entry?.borderBoxSize[0]) return;
-      const width = entry.borderBoxSize[0].inlineSize;
-      const height = entry.borderBoxSize[0].blockSize;
-      this.setRect({ width, height });
-    };
-  };
-  var index = 0;
-  function uid() {
-    return index++;
-  }
-  var Snap = class {
-    constructor(lenis, {
-      type = "proximity",
-      lerp: lerp2,
-      easing,
-      duration,
-      distanceThreshold = "50%",
-      // useless when type is "mandatory"
-      debounce: debounceDelay = 500,
-      onSnapStart,
-      onSnapComplete
-    } = {}) {
-      this.lenis = lenis;
-      this.options = {
-        type,
-        lerp: lerp2,
-        easing,
-        duration,
-        distanceThreshold,
-        debounce: debounceDelay,
-        onSnapStart,
-        onSnapComplete
-      };
-      this.onWindowResize();
-      window.addEventListener("resize", this.onWindowResize, false);
-      this.onSnapDebounced = debounce2(
-        this.onSnap,
-        this.options.debounce
-      );
-      this.lenis.on("virtual-scroll", this.onSnapDebounced);
     }
-    options;
-    elements = /* @__PURE__ */ new Map();
-    snaps = /* @__PURE__ */ new Map();
-    viewport = {
-      width: window.innerWidth,
-      height: window.innerHeight
-    };
-    isStopped = false;
-    onSnapDebounced;
-    currentSnapIndex;
-    /**
-     * Destroy the snap instance
-     */
-    destroy() {
-      this.lenis.off("virtual-scroll", this.onSnapDebounced);
-      window.removeEventListener("resize", this.onWindowResize, false);
-      this.elements.forEach((element) => {
-        element.destroy();
-      });
-    }
-    /**
-     * Start the snap after it has been stopped
-     */
-    start() {
-      this.isStopped = false;
-    }
-    /**
-     * Stop the snap
-     */
-    stop() {
-      this.isStopped = true;
-    }
-    /**
-     * Add a snap to the snap instance
-     *
-     * @param value The value to snap to
-     * @param userData User data that will be forwarded through the snap event
-     * @returns Unsubscribe function
-     */
-    add(value) {
-      const id = uid();
-      this.snaps.set(id, { value });
-      return () => this.snaps.delete(id);
-    }
-    /**
-     * Add an element to the snap instance
-     *
-     * @param element The element to add
-     * @param options The options for the element
-     * @returns Unsubscribe function
-     */
-    addElement(element, options = {}) {
-      const id = uid();
-      this.elements.set(id, new SnapElement(element, options));
-      return () => this.elements.delete(id);
-    }
-    addElements(elements, options = {}) {
-      const map = [...elements].map(
-        (element) => this.addElement(element, options)
-      );
-      return () => {
-        map.forEach((remove) => {
-          remove();
-        });
-      };
-    }
-    onWindowResize = () => {
-      this.viewport.width = window.innerWidth;
-      this.viewport.height = window.innerHeight;
-    };
-    computeSnaps = () => {
-      const { isHorizontal } = this.lenis;
-      let snaps = [...this.snaps.values()];
-      this.elements.forEach(({ rect, align }) => {
-        let value;
-        align.forEach((align2) => {
-          if (align2 === "start") {
-            value = rect.top;
-          } else if (align2 === "center") {
-            value = isHorizontal ? rect.left + rect.width / 2 - this.viewport.width / 2 : rect.top + rect.height / 2 - this.viewport.height / 2;
-          } else if (align2 === "end") {
-            value = isHorizontal ? rect.left + rect.width - this.viewport.width : rect.top + rect.height - this.viewport.height;
-          }
-          if (typeof value === "number") {
-            snaps.push({ value: Math.ceil(value) });
-          }
-        });
-      });
-      snaps = snaps.sort((a, b) => Math.abs(a.value) - Math.abs(b.value));
-      return snaps;
-    };
-    previous() {
-      this.goTo((this.currentSnapIndex ?? 0) - 1);
-    }
-    next() {
-      this.goTo((this.currentSnapIndex ?? 0) + 1);
-    }
-    goTo(index2) {
-      const snaps = this.computeSnaps();
-      if (snaps.length === 0) return;
-      this.currentSnapIndex = Math.max(0, Math.min(index2, snaps.length - 1));
-      const currentSnap = snaps[this.currentSnapIndex];
-      if (currentSnap === void 0) return;
-      this.lenis.scrollTo(currentSnap.value, {
-        duration: this.options.duration,
-        easing: this.options.easing,
-        lerp: this.options.lerp,
-        lock: this.options.type === "lock",
-        userData: { initiator: "snap" },
-        onStart: () => {
-          this.options.onSnapStart?.({
-            index: this.currentSnapIndex,
-            ...currentSnap
-          });
-        },
-        onComplete: () => {
-          this.options.onSnapComplete?.({
-            index: this.currentSnapIndex,
-            ...currentSnap
-          });
-        }
-      });
-    }
-    get distanceThreshold() {
-      let distanceThreshold = Number.POSITIVE_INFINITY;
-      if (this.options.type === "mandatory") return Number.POSITIVE_INFINITY;
-      const { isHorizontal } = this.lenis;
-      const axis = isHorizontal ? "width" : "height";
-      if (typeof this.options.distanceThreshold === "string" && this.options.distanceThreshold.endsWith("%")) {
-        distanceThreshold = Number(this.options.distanceThreshold.replace("%", "")) / 100 * this.viewport[axis];
-      } else if (typeof this.options.distanceThreshold === "number") {
-        distanceThreshold = this.options.distanceThreshold;
-      } else {
-        distanceThreshold = this.viewport[axis];
-      }
-      return distanceThreshold;
-    }
-    onSnap = (e) => {
-      if (this.isStopped) return;
-      if (e.event.type === "touchmove") return;
-      if (this.options.type === "lock" && this.lenis.userData?.initiator === "snap")
-        return;
-      let { scroll, isHorizontal } = this.lenis;
-      const delta = isHorizontal ? e.deltaX : e.deltaY;
-      scroll = Math.ceil(this.lenis.scroll + delta);
-      const snaps = this.computeSnaps();
-      if (snaps.length === 0) return;
-      let snapIndex;
-      const prevSnapIndex = snaps.findLastIndex(({ value }) => value < scroll);
-      const nextSnapIndex = snaps.findIndex(({ value }) => value > scroll);
-      if (this.options.type === "lock") {
-        if (delta > 0) {
-          snapIndex = nextSnapIndex;
-        } else if (delta < 0) {
-          snapIndex = prevSnapIndex;
-        }
-      } else {
-        const prevSnap = snaps[prevSnapIndex];
-        const distanceToPrevSnap = prevSnap ? Math.abs(scroll - prevSnap.value) : Number.POSITIVE_INFINITY;
-        const nextSnap = snaps[nextSnapIndex];
-        const distanceToNextSnap = nextSnap ? Math.abs(scroll - nextSnap.value) : Number.POSITIVE_INFINITY;
-        snapIndex = distanceToPrevSnap < distanceToNextSnap ? prevSnapIndex : nextSnapIndex;
-      }
-      if (snapIndex === void 0) return;
-      if (snapIndex === -1) return;
-      snapIndex = Math.max(0, Math.min(snapIndex, snaps.length - 1));
-      const snap = snaps[snapIndex];
-      const distance = Math.abs(scroll - snap.value);
-      if (distance <= this.distanceThreshold) {
-        this.goTo(snapIndex);
-      }
-    };
     resize() {
-      this.elements.forEach((element) => {
-        element.onWrapperResize();
-      });
+      if (this.#n(), this.config.variableWidth && !this.config.infinite && this.items.length > 0) {
+        let h = this.currentSlide, b = this.#s(h);
+        if (this.target = b, Math.abs(this.current - this.target) < 1) this.current = b;
+      }
+      let o = this.#h, u = this.isVisible;
+      this.#h = true, this.isVisible = true, this.update(), this.#h = o, this.isVisible = u;
     }
   };
+  var x = $;
 
   // src/features/loopSlider.ts
-  var LOOP_SLIDER_SELECTORS = {
-    root: ['[data-loop-slider="root"]', ".loop-slider-wrapper", ".slider-section"],
-    track: ['[data-loop-slider="track"]', ".loop-slider-track"],
-    list: ['[data-loop-slider="list"]', ".slider-wrapper"],
-    loop: ['[data-loop-slider="loop"]', ".loop-slider.w-dyn-list", ".loop-slider"],
-    item: ['[data-loop-slider="item"]', ".slide-w"],
-    content: ['[data-loop-slider="content"]', ".home-project-card"],
-    blur: ['[data-loop-slider="blur"]', ".slide-blur"],
-    media: ['[data-loop-slider="focus"]', ".home-project-card"]
+  var SEL = {
+    /** Outermost wrapper — used to find slider roots on the page */
+    root: ".loop-slider-wrapper",
+    /** Direct parent of slides — this is what smooothy is instantiated on */
+    sliderList: ".loop-slider",
+    /** Individual slide items */
+    slide: ".slide",
+    /** Card / content node inside each slide */
+    content: ".home-project-card",
+    /** Media focus node (blur target) */
+    media: ".home-project-card",
+    /** Overlay title element */
+    activeTitle: ".activeitem-title",
+    /** Title text spans */
+    titleNormal: ".list-title-normal",
+    titleSub: ".list-subtitle, .list-title-super",
+    /** CMS source block inside each slide */
+    cmsSource: ".cms-homepage-source",
+    cmsTitleField: ".cms-homepage-title",
+    cmsSuperField: ".cms-homepage-super",
+    /** Services */
+    servicesList: ".activeitem-services-list",
+    serviceSourceItem: ".active-services-source-item"
   };
-  var LOOP_SLIDER_CONFIG = {
-    baseScale: 0.4,
-    // reduced to avoid full bleed
+  var CONFIG = {
+    baseScale: 0.6,
     focusScale: 0.825,
-    // max scale doesn't reach edges
     blurMax: 100,
-    // blur on enter/leave
-    translateMax: 0,
     lerp: 0.08,
-    // faster snapping
     progressLerp: 0.12,
     minOpacity: 0.5,
-    // increased to prevent items looking completely gone
     safeZoneBuffer: -32
-    // negative buffer pulls items into transition earlier
   };
-  var LENIS_STYLE_ID = "loop-slider-lenis-styles";
-  var LENIS_STYLES = "html.lenis,html.lenis body{height:auto}.lenis:not(.lenis-autoToggle).lenis-stopped{overflow:clip}.lenis [data-lenis-prevent],.lenis [data-lenis-prevent-wheel],.lenis [data-lenis-prevent-touch]{overscroll-behavior:contain}.lenis.lenis-smooth iframe{pointer-events:none}.lenis.lenis-autoToggle{transition-property:overflow;transition-duration:1ms;transition-behavior:allow-discrete}";
-  var LOOP_SLIDER_SNAP_ATTR = "data-loop-slider-snap";
-  var sliderAnimationFrame = null;
-  var sliderScrollListenerAttached = false;
-  var sliderResizeListenerAttached = false;
-  var loopSliderInstances = [];
-  var clamp2 = (value, min, max) => Math.max(min, Math.min(max, value));
-  var ensureLenisStyles = () => {
-    if (!document.getElementById(LENIS_STYLE_ID)) {
-      const style = document.createElement("style");
-      style.id = LENIS_STYLE_ID;
-      style.textContent = LENIS_STYLES;
-      document.head.appendChild(style);
-    }
+  var slideStates = /* @__PURE__ */ new WeakMap();
+  var getOrCreateSlideState = (node) => {
+    const existing = slideStates.get(node);
+    if (existing) return existing;
+    const contentNode = node.querySelector(SEL.content) ?? node;
+    const focusTargets = [];
+    const primary = node.querySelector(SEL.media);
+    const workTitle = node.querySelector(".work-title");
+    if (primary) focusTargets.push(primary);
+    if (workTitle) focusTargets.push(workTitle);
+    if (!focusTargets.length) focusTargets.push(contentNode);
+    contentNode.style.willChange = "transform, opacity, filter";
+    contentNode.style.transformOrigin = "center center";
+    const state = {
+      node,
+      contentNode,
+      focusNodes: focusTargets,
+      progress: 0,
+      targetProgress: 0,
+      scale: CONFIG.baseScale,
+      targetScale: CONFIG.baseScale
+    };
+    slideStates.set(node, state);
+    return state;
   };
-  var queryElementWithFallback = (root, selectors) => {
-    for (const selector of selectors) {
-      const element = root.querySelector(selector);
-      if (element) {
-        return element;
-      }
-    }
-    return null;
-  };
-  var queryAllWithFallback = (root, selectors) => {
-    for (const selector of selectors) {
-      const elements = Array.from(root.querySelectorAll(selector));
-      if (elements.length) {
-        return elements;
-      }
-    }
-    return [];
-  };
-  var getLoopSliderRoots = () => {
-    const roots = queryAllWithFallback(document, LOOP_SLIDER_SELECTORS.root);
-    return roots.filter((root) => queryElementWithFallback(root, LOOP_SLIDER_SELECTORS.list));
-  };
-  var ACTIVE_MORPH_MS = 400;
-  var activeItemTransitioning = false;
+  var clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  var CROSSFADE_MS = 250;
   var applyActiveDetails = (source) => {
-    const targetNormal = document.querySelector(".list-title-normal");
-    const targetSuper = document.querySelector(".list-title-super");
-    if (!targetNormal || !source) return false;
-    const sourceTitle = source.querySelector(".cms-homepage-title")?.textContent?.trim() || "";
-    const sourceSuper = source.querySelector(".cms-homepage-super")?.textContent?.trim() || "";
-    let titleChanged = false;
-    if (targetNormal.textContent !== sourceTitle) {
-      targetNormal.textContent = sourceTitle;
-      titleChanged = true;
+    const titleEl = document.querySelector(SEL.titleNormal);
+    const subEl = document.querySelector(SEL.titleSub);
+    if (!titleEl || !source) return false;
+    const srcTitle = source.querySelector(SEL.cmsTitleField)?.textContent?.trim() || "";
+    const srcSub = source.querySelector(SEL.cmsSuperField)?.textContent?.trim() || "";
+    let changed = false;
+    if (titleEl.textContent !== srcTitle) {
+      titleEl.textContent = srcTitle;
+      changed = true;
     }
-    if (targetSuper && targetSuper.textContent !== sourceSuper) {
-      targetSuper.textContent = sourceSuper;
-      titleChanged = true;
+    if (subEl) {
+      const formatted = srcSub ? ` // ${srcSub}` : "";
+      if (subEl.textContent !== formatted) {
+        subEl.textContent = formatted;
+        changed = true;
+      }
     }
-    const servicesOut = document.querySelector(".activeitem-services-list");
-    const visibleLabels = new Set(
+    const servicesOut = document.querySelector(SEL.servicesList);
+    const currentLabels = new Set(
       Array.from(servicesOut?.children || []).map((li) => li.textContent?.trim())
     );
     const incomingLabels = new Set(
-      Array.from(source.querySelectorAll(".active-services-source-item")).map(
-        (item) => item.textContent?.trim() || ""
+      Array.from(source.querySelectorAll(SEL.serviceSourceItem)).map(
+        (el) => el.textContent?.trim() || ""
       )
     );
-    let servicesChanged = false;
-    if (visibleLabels.size !== incomingLabels.size) {
-      servicesChanged = true;
-    } else {
-      for (const label of incomingLabels) {
-        if (!visibleLabels.has(label)) {
+    let servicesChanged = currentLabels.size !== incomingLabels.size;
+    if (!servicesChanged) {
+      for (const l of incomingLabels) {
+        if (!currentLabels.has(l)) {
           servicesChanged = true;
           break;
         }
@@ -1603,472 +582,205 @@
         servicesOut.appendChild(li);
       });
     }
-    return titleChanged || servicesChanged;
+    return changed || servicesChanged;
   };
   var updateActiveDetailsFromSource = (source) => {
-    const container = document.querySelector(".activeitem-title");
-    if (!container) {
-      return applyActiveDetails(source);
-    }
-    const targetNormal = document.querySelector(".list-title-normal");
-    const targetSuper = document.querySelector(".list-title-super");
-    if (!targetNormal) return false;
-    const sourceTitle = source.querySelector(".cms-homepage-title")?.textContent?.trim() || "";
-    const sourceSuper = source.querySelector(".cms-homepage-super")?.textContent?.trim() || "";
-    let titleSame = targetNormal.textContent === sourceTitle;
-    if (targetSuper) {
-      titleSame = titleSame && targetSuper.textContent === sourceSuper;
-    }
-    const servicesOut = document.querySelector(".activeitem-services-list");
-    const visibleLabels = new Set(
-      Array.from(servicesOut?.children || []).map((li) => li.textContent?.trim())
+    const titleEl = document.querySelector(SEL.titleNormal);
+    const subEl = document.querySelector(SEL.titleSub);
+    const servicesEl = document.querySelector(SEL.servicesList);
+    if (!titleEl) return false;
+    const srcTitle = source.querySelector(SEL.cmsTitleField)?.textContent?.trim() || "";
+    const srcSub = source.querySelector(SEL.cmsSuperField)?.textContent?.trim() || "";
+    const formatted = srcSub ? ` // ${srcSub}` : "";
+    let same = titleEl.textContent === srcTitle;
+    if (subEl) same = same && subEl.textContent === formatted;
+    const currentLabels = new Set(
+      Array.from(servicesEl?.children || []).map((li) => li.textContent?.trim())
     );
     const incomingLabels = new Set(
-      Array.from(source.querySelectorAll(".active-services-source-item")).map(
-        (item) => item.textContent?.trim() || ""
+      Array.from(source.querySelectorAll(SEL.serviceSourceItem)).map(
+        (el) => el.textContent?.trim() || ""
       )
     );
-    let servicesSame = visibleLabels.size === incomingLabels.size;
+    let servicesSame = currentLabels.size === incomingLabels.size;
     if (servicesSame) {
-      for (const label of incomingLabels) {
-        if (!visibleLabels.has(label)) {
+      for (const l of incomingLabels) {
+        if (!currentLabels.has(l)) {
           servicesSame = false;
           break;
         }
       }
     }
-    if (titleSame && servicesSame) return false;
-    if (activeItemTransitioning) {
-      container.style.transition = "none";
-      container.style.width = "";
-      container.style.height = "";
-      activeItemTransitioning = false;
-    }
-    activeItemTransitioning = true;
-    container.style.transition = "none";
-    container.style.width = "";
-    container.style.height = "";
-    container.style.overflow = "hidden";
-    const firstRect = container.getBoundingClientRect();
-    if (targetNormal) {
-      targetNormal.style.transition = "none";
-      targetNormal.style.opacity = "0";
-    }
-    if (targetSuper) {
-      targetSuper.style.transition = "none";
-      targetSuper.style.opacity = "0";
-    }
-    applyActiveDetails(source);
-    const lastRect = container.getBoundingClientRect();
-    container.style.width = `${firstRect.width}px`;
-    container.style.height = `${firstRect.height}px`;
-    void container.offsetHeight;
-    container.style.transition = `width ${ACTIVE_MORPH_MS}ms cubic-bezier(0.25, 1, 0.5, 1), height ${ACTIVE_MORPH_MS}ms cubic-bezier(0.25, 1, 0.5, 1)`;
-    container.style.width = `${lastRect.width}px`;
-    container.style.height = `${lastRect.height}px`;
-    if (targetNormal) {
-      targetNormal.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
-      targetNormal.style.opacity = "1";
-    }
-    if (targetSuper) {
-      targetSuper.style.transition = `opacity ${ACTIVE_MORPH_MS}ms ease`;
-      targetSuper.style.opacity = "1";
-    }
-    const cleanup = (e) => {
-      if (e.target !== container) return;
-      if (e.propertyName !== "width" && e.propertyName !== "height") return;
-      container.style.transition = "";
-      container.style.width = "";
-      container.style.height = "";
-      container.style.overflow = "";
-      activeItemTransitioning = false;
-      container.removeEventListener("transitionend", cleanup);
-    };
-    container.addEventListener("transitionend", cleanup);
+    if (same && servicesSame) return false;
+    const fadeEls = [titleEl, subEl, servicesEl].filter(Boolean);
+    fadeEls.forEach((el) => {
+      el.style.transition = `opacity ${CROSSFADE_MS}ms ease`;
+      el.style.opacity = "0";
+    });
     setTimeout(() => {
-      if (activeItemTransitioning) {
-        container.style.transition = "";
-        container.style.width = "";
-        container.style.height = "";
-        container.style.overflow = "";
-        activeItemTransitioning = false;
-        container.removeEventListener("transitionend", cleanup);
-      }
-    }, ACTIVE_MORPH_MS + 50);
+      applyActiveDetails(source);
+      fadeEls.forEach((el) => {
+        el.style.opacity = "1";
+      });
+    }, CROSSFADE_MS);
     return true;
   };
+  var animationFrame = null;
+  var resizeAttached = false;
+  var instances = [];
   var LoopSliderInstance = class {
     root;
-    prefersInfinite;
-    config = LOOP_SLIDER_CONFIG;
-    slides = [];
-    viewportHeight = window.innerHeight || 0;
-    primaryList = null;
-    loopHeight = 0;
-    loopOffset = 0;
-    virtualScroll = 0;
-    loopIndex = 0;
-    previousScroll = null;
-    trackElement = null;
-    loopLists = [];
-    localLenis = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    localSnap = null;
-    localLenisRaf = null;
-    handleLenisScroll;
-    mostVisibleSlide = null;
+    slider = null;
+    mostVisibleNode = null;
     constructor(root) {
       this.root = root;
-      this.prefersInfinite = root.dataset.loopSliderInfinite !== "false";
-      const track = queryElementWithFallback(root, LOOP_SLIDER_SELECTORS.track);
-      const list = queryElementWithFallback(root, LOOP_SLIDER_SELECTORS.list);
-      if (!list || !track) {
-        throw new Error(
-          'Loop slider list not found. Add data-loop-slider="list" to the slider wrapper.'
-        );
+      const list = root.querySelector(SEL.sliderList);
+      if (!list) {
+        throw new Error(`Loop slider: could not find "${SEL.sliderList}" inside "${SEL.root}".`);
       }
-      this.primaryList = list;
-      this.loopHeight = this.primaryList.scrollHeight;
-      this.trackElement = track;
-      this.prepareLoopLists(track);
-      this.collectSlides();
-      if (this.prefersInfinite) {
-        this.initLocalLenis();
-      }
+      this.initSmooothy(list);
     }
     destroy() {
-      if (this.handleLenisScroll && this.localLenis) {
-        this.localLenis.off("scroll", this.handleLenisScroll);
-      }
-      if (this.localLenisRaf !== null) {
-        window.cancelAnimationFrame(this.localLenisRaf);
-        this.localLenisRaf = null;
-      }
-      this.localSnap?.destroy();
-      this.localSnap = null;
-      this.localLenis?.destroy();
-      this.localLenis = null;
+      this.slider?.destroy();
+      this.slider = null;
     }
-    initLocalLenis() {
-      if (this.localLenis || !this.trackElement) {
-        return;
-      }
-      ensureLenisStyles();
-      this.root.style.overflow = this.root.style.overflow || "hidden";
-      this.root.style.position = this.root.style.position || "relative";
-      this.trackElement.style.willChange = this.trackElement.style.willChange || "transform";
-      this.localLenis = new Lenis({
-        wrapper: this.root,
-        content: this.trackElement,
-        smoothWheel: true,
+    // ── Smooothy ──────────────────────────────────────────────────────
+    initSmooothy(list) {
+      if (this.slider) return;
+      this.slider = new x(list, {
         infinite: true,
-        syncTouch: true,
-        touchMultiplier: 1.66,
-        wheelMultiplier: 1.66
-        // Lower = less travel per gesture before snap kicks in
+        snap: true,
+        vertical: true,
+        scrollInput: true,
+        onUpdate: () => this.measure(),
+        onSlideChange: () => this.measure()
       });
-      this.handleLenisScroll = () => {
-        this.measure();
-      };
-      this.localLenis.on("scroll", this.handleLenisScroll);
-      this.localSnap = new Snap(this.localLenis, {
-        type: "lock",
-        duration: 0.33,
-        debounce: 33,
-        distanceThreshold: 99999,
-        // Always snap, no matter how far the next card is
-        easing: (t) => 1 - Math.pow(1 - t, 3)
-      });
-      this.slides.forEach((slide) => {
-        this.localSnap?.addElement(slide.node, { align: ["center"] });
-      });
-      const raf = (time) => {
-        this.localLenis?.raf(time);
-        this.localLenisRaf = window.requestAnimationFrame(raf);
-      };
-      this.localLenisRaf = window.requestAnimationFrame(raf);
+      list.style.cursor = "default";
+      list.addEventListener("mousedown", (e) => e.stopPropagation(), true);
+      this.slider.init();
+      requestAnimationFrame(() => this.measure());
     }
-    collectSlides() {
-      const nodes = queryAllWithFallback(this.root, LOOP_SLIDER_SELECTORS.item);
-      this.slides = nodes.map((node) => ({
-        node,
-        contentNode: queryElementWithFallback(node, LOOP_SLIDER_SELECTORS.content) ?? node,
-        blurNode: queryElementWithFallback(node, LOOP_SLIDER_SELECTORS.blur),
-        focusNodes: (() => {
-          const focusTargets = [];
-          const primaryFocus = queryElementWithFallback(
-            node,
-            LOOP_SLIDER_SELECTORS.media
-          );
-          const titleNode = node.querySelector(".work-title");
-          if (primaryFocus) {
-            focusTargets.push(primaryFocus);
-          }
-          if (titleNode) {
-            focusTargets.push(titleNode);
-          }
-          if (!focusTargets.length) {
-            focusTargets.push(
-              queryElementWithFallback(node, LOOP_SLIDER_SELECTORS.content) ?? node
-            );
-          }
-          return focusTargets;
-        })(),
-        progress: 0,
-        targetProgress: 0,
-        scale: this.config.baseScale,
-        targetScale: this.config.baseScale
-      }));
-      this.slides.forEach((slide) => {
-        const content = slide.contentNode;
-        content.style.willChange = "transform, opacity, filter, mix-blend-mode";
-        content.style.transformOrigin = "center center";
-        content.style.position = content.style.position || "relative";
-      });
-    }
-    applySlideStyles(slide) {
-      const opacity = this.config.minOpacity + (1 - this.config.minOpacity) * slide.progress;
-      slide.contentNode.style.transform = `scale(${slide.scale.toFixed(4)})`;
-      slide.contentNode.style.opacity = opacity.toFixed(3);
-      slide.focusNodes.forEach((target) => {
-        const visibility = slide.progress;
-        const blurValue = (1 - visibility) * this.config.blurMax;
-        const xRayIntensity = (1 - visibility) * 100;
-        target.style.filter = `blur(${blurValue.toFixed(2)}px) grayscale(${xRayIntensity.toFixed(1)}%) invert(${xRayIntensity.toFixed(1)}%)`;
-      });
-      if (slide.blurNode) {
-        slide.blurNode.style.opacity = (1 - slide.progress).toFixed(3);
-      }
-    }
-    prepareLoopLists(track) {
-      this.loopLists = queryAllWithFallback(track, LOOP_SLIDER_SELECTORS.loop);
-      if (!this.loopLists.length) {
-        this.loopLists = [];
-        return;
-      }
-      if (this.loopLists.length < 2) {
-        const clone = this.loopLists[0].cloneNode(true);
-        track.appendChild(clone);
-        this.loopLists.push(clone);
-      }
-    }
-    rotateLists(direction) {
-      if (!this.trackElement || !this.loopLists.length) {
-        return;
-      }
-      if (direction === "forward") {
-        const first = this.loopLists.shift();
-        if (!first) {
-          return;
-        }
-        this.trackElement.appendChild(first);
-        this.loopLists.push(first);
-      } else {
-        const last = this.loopLists.pop();
-        if (!last) {
-          return;
-        }
-        const firstChild = this.trackElement.firstElementChild;
-        if (firstChild) {
-          this.trackElement.insertBefore(last, firstChild);
-        } else {
-          this.trackElement.appendChild(last);
-        }
-        this.loopLists.unshift(last);
-      }
-    }
-    computeLoopHeight() {
-      if (!this.primaryList) {
-        return this.loopHeight;
-      }
-      const height = this.primaryList.scrollHeight || this.primaryList.offsetHeight;
-      if (height) {
-        this.loopHeight = height;
-      }
-      return this.loopHeight;
-    }
-    applyLoopOffset() {
-      if (!this.prefersInfinite || !this.localLenis || !this.trackElement) {
-        return;
-      }
-      const loopHeight = this.loopHeight || this.computeLoopHeight();
-      if (!loopHeight) {
-        return;
-      }
-      const { scroll } = this.localLenis;
-      const limit = Math.max(this.localLenis.limit || loopHeight, loopHeight);
-      if (this.previousScroll === null) {
-        this.previousScroll = scroll;
-        this.virtualScroll = 0;
-        this.loopIndex = 0;
-        this.loopOffset = 0;
-        this.trackElement.style.transform = "";
-        return;
-      }
-      let delta = scroll - this.previousScroll;
-      if (Math.abs(delta) > limit * 0.5) {
-        delta += delta > 0 ? -limit : limit;
-      }
-      this.virtualScroll += delta;
-      this.previousScroll = scroll;
-      const nextLoopIndex = Math.floor(this.virtualScroll / loopHeight);
-      let diff = nextLoopIndex - this.loopIndex;
-      while (diff > 0) {
-        this.rotateLists("forward");
-        this.loopIndex += 1;
-        diff -= 1;
-      }
-      while (diff < 0) {
-        this.rotateLists("backward");
-        this.loopIndex -= 1;
-        diff += 1;
-      }
-      const remainder = this.virtualScroll - this.loopIndex * loopHeight;
-      this.loopOffset = scroll - remainder;
-      this.trackElement.style.transform = `translate3d(0, ${this.loopOffset}px, 0)`;
-    }
+    // ── Per-frame measurement ─────────────────────────────────────────
     measure() {
-      if (!this.slides.length) {
-        return;
-      }
-      const viewportHeight = Math.max(window.innerHeight, 1);
-      this.viewportHeight = viewportHeight;
-      this.computeLoopHeight();
-      this.applyLoopOffset();
-      const buffer = this.config.safeZoneBuffer;
-      let maxVisibility = -1;
-      let nextActiveSlide = null;
-      this.slides.forEach((slide) => {
-        const scaleRect = slide.node.getBoundingClientRect();
-        const nodeCenter = scaleRect.top + scaleRect.height / 2;
-        const viewportCenter = viewportHeight / 2;
-        const distance = Math.abs(nodeCenter - viewportCenter);
-        const plateau = Math.max(0, (scaleRect.height - viewportHeight) / 2);
-        const activeDistance = Math.max(0, distance - plateau);
-        const transitionDist = viewportHeight / 2 + buffer - 1;
-        let scaleVisibility = 1 - activeDistance / transitionDist;
-        scaleVisibility = clamp2(scaleVisibility * 2.5, 0, 1);
-        scaleVisibility = Math.pow(scaleVisibility, 0.3);
-        slide.targetProgress = scaleVisibility;
-        slide.targetScale = this.config.baseScale + (this.config.focusScale - this.config.baseScale) * scaleVisibility;
-        if (scaleVisibility > maxVisibility) {
-          maxVisibility = scaleVisibility;
-          nextActiveSlide = slide;
+      const slides = this.root.querySelectorAll(SEL.slide);
+      if (!slides.length) return;
+      const vh = Math.max(window.innerHeight, 1);
+      const buffer = CONFIG.safeZoneBuffer;
+      let maxVis = -1;
+      let bestNode = null;
+      slides.forEach((node) => {
+        const state = getOrCreateSlideState(node);
+        const rect = node.getBoundingClientRect();
+        const nodeCenter = rect.top + rect.height / 2;
+        const vpCenter = vh / 2;
+        const distance = Math.abs(nodeCenter - vpCenter);
+        const plateau = Math.max(0, (rect.height - vh) / 2);
+        const activeDist = Math.max(0, distance - plateau);
+        const transitionDist = vh / 2 + buffer - 1;
+        let vis = 1 - activeDist / transitionDist;
+        vis = clamp(vis * 2.5, 0, 1);
+        vis = Math.pow(vis, 0.3);
+        state.targetProgress = vis;
+        state.targetScale = CONFIG.baseScale + (CONFIG.focusScale - CONFIG.baseScale) * vis;
+        if (vis > maxVis) {
+          maxVis = vis;
+          bestNode = node;
         }
       });
-      if (nextActiveSlide && nextActiveSlide !== this.mostVisibleSlide && maxVisibility > 0.5) {
-        this.mostVisibleSlide = nextActiveSlide;
-        const source = this.mostVisibleSlide.node.querySelector(".cms-homepage-source");
-        if (source) {
-          updateActiveDetailsFromSource(source);
+      if (bestNode && bestNode !== this.mostVisibleNode && maxVis > 0.5) {
+        this.mostVisibleNode = bestNode;
+        const src = this.mostVisibleNode.querySelector(SEL.cmsSource);
+        if (src) updateActiveDetailsFromSource(src);
+      }
+      const firstSlideRect = slides[0]?.getBoundingClientRect();
+      const slidesHaveSize = firstSlideRect && firstSlideRect.width > 1 && firstSlideRect.height > 1;
+      if (slidesHaveSize) {
+        const titleContainer = document.querySelector(SEL.activeTitle);
+        if (titleContainer) {
+          const titleOpacity = clamp((maxVis - 0.7) / 0.2, 0, 1);
+          titleContainer.style.setProperty("opacity", titleOpacity.toFixed(2), "important");
+          titleContainer.style.setProperty("transition", "opacity 0.1s linear");
+          titleContainer.style.pointerEvents = titleOpacity < 0.1 ? "none" : "auto";
         }
       }
     }
+    // ── Per-frame interpolation (called from rAF loop) ────────────────
     animate() {
-      if (!this.slides.length) {
-        return;
-      }
-      this.slides.forEach((slide) => {
-        slide.scale += (slide.targetScale - slide.scale) * this.config.lerp;
-        slide.progress += (slide.targetProgress - slide.progress) * this.config.progressLerp;
-        this.applySlideStyles(slide);
+      this.slider?.update();
+      const slides = this.root.querySelectorAll(SEL.slide);
+      slides.forEach((node) => {
+        const s = getOrCreateSlideState(node);
+        s.scale += (s.targetScale - s.scale) * CONFIG.lerp;
+        s.progress += (s.targetProgress - s.progress) * CONFIG.progressLerp;
+        this.applyStyles(s);
       });
     }
     syncToTargets() {
-      if (!this.slides.length) {
-        return;
-      }
-      this.slides.forEach((slide) => {
-        slide.scale = slide.targetScale;
-        slide.progress = slide.targetProgress;
-        this.applySlideStyles(slide);
+      const slides = this.root.querySelectorAll(SEL.slide);
+      slides.forEach((node) => {
+        const s = getOrCreateSlideState(node);
+        s.scale = s.targetScale;
+        s.progress = s.targetProgress;
+        this.applyStyles(s);
+      });
+    }
+    // ── Visual effects ────────────────────────────────────────────────
+    applyStyles(s) {
+      const opacity = CONFIG.minOpacity + (1 - CONFIG.minOpacity) * s.progress;
+      s.contentNode.style.transform = `scale(${s.scale.toFixed(4)})`;
+      s.contentNode.style.opacity = opacity.toFixed(3);
+      s.focusNodes.forEach((target) => {
+        const blur = (1 - s.progress) * CONFIG.blurMax;
+        const xray = (1 - s.progress) * 100;
+        target.style.filter = `blur(${blur.toFixed(2)}px) grayscale(${xray.toFixed(1)}%) invert(${xray.toFixed(1)}%)`;
       });
     }
   };
-  var triggerSliderMeasurements = () => {
-    loopSliderInstances.forEach((instance) => instance.measure());
-  };
-  var handleNativeScroll = () => {
-    triggerSliderMeasurements();
-  };
-  var handleResize = () => {
-    triggerSliderMeasurements();
-  };
-  var attachNativeScrollListener = () => {
-    if (sliderScrollListenerAttached) {
-      return;
-    }
-    window.addEventListener("scroll", handleNativeScroll, { passive: true });
-    sliderScrollListenerAttached = true;
-  };
-  var attachResizeListener = () => {
-    if (sliderResizeListenerAttached) {
-      return;
-    }
-    window.addEventListener("resize", handleResize);
-    sliderResizeListenerAttached = true;
-  };
-  var startSliderAnimationLoop = () => {
-    if (sliderAnimationFrame !== null) {
-      return;
-    }
+  var handleResize = () => instances.forEach((i2) => i2.measure());
+  var startAnimationLoop = () => {
+    if (animationFrame !== null) return;
     const loop = () => {
-      loopSliderInstances.forEach((instance) => instance.animate());
-      sliderAnimationFrame = window.requestAnimationFrame(loop);
+      instances.forEach((i2) => i2.animate());
+      animationFrame = requestAnimationFrame(loop);
     };
-    sliderAnimationFrame = window.requestAnimationFrame(loop);
+    animationFrame = requestAnimationFrame(loop);
   };
   var initLoopSlider = () => {
-    const shouldSnap = document.body.hasAttribute(LOOP_SLIDER_SNAP_ATTR);
     if ("scrollRestoration" in history) {
       history.scrollRestoration = "manual";
     }
-    const sliderRoots = getLoopSliderRoots();
-    if (!sliderRoots.length) {
-      if (shouldSnap) {
-        document.body.removeAttribute(LOOP_SLIDER_SNAP_ATTR);
-      }
-      return;
-    }
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (prefersReducedMotion.matches) {
-      if (shouldSnap) {
-        document.body.removeAttribute(LOOP_SLIDER_SNAP_ATTR);
-      }
-      return;
-    }
-    const instances = sliderRoots.map((root) => {
+    const roots = Array.from(document.querySelectorAll(SEL.root));
+    if (!roots.length) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const created = roots.map((root) => {
       try {
         return new LoopSliderInstance(root);
-      } catch {
+      } catch (e) {
+        console.error("[loopSlider]", e);
         return null;
       }
-    }).filter((instance) => Boolean(instance));
-    if (!instances.length) {
-      return;
+    }).filter((i2) => Boolean(i2));
+    if (!created.length) return;
+    instances.push(...created);
+    if (!resizeAttached) {
+      window.addEventListener("resize", handleResize);
+      resizeAttached = true;
     }
-    loopSliderInstances.push(...instances);
-    attachNativeScrollListener();
-    attachResizeListener();
-    triggerSliderMeasurements();
-    if (shouldSnap) {
-      instances.forEach((instance) => instance.syncToTargets());
-      document.body.removeAttribute(LOOP_SLIDER_SNAP_ATTR);
-    }
-    startSliderAnimationLoop();
-    const initActiveWithRetries = (tries = 40, delay = 50) => {
+    instances.forEach((i2) => i2.measure());
+    startAnimationLoop();
+    const initTitle = (tries = 40, delay = 50) => {
       let count = 0;
       const tick = () => {
-        const firstSlide = document.querySelector(".slide-w");
-        const source = firstSlide?.querySelector(".cms-homepage-source");
-        if (source && applyActiveDetails(source)) return;
-        count += 1;
+        const firstSlide = document.querySelector(SEL.slide);
+        const src = firstSlide?.querySelector(SEL.cmsSource);
+        if (src && applyActiveDetails(src)) return;
+        count++;
         if (count >= tries) return;
         setTimeout(tick, delay);
       };
       tick();
     };
-    initActiveWithRetries();
+    initTitle();
   };
 
   // node_modules/.pnpm/hls.js@1.6.15/node_modules/hls.js/dist/hls.mjs
@@ -2369,15 +1081,15 @@
     if ("object" != typeof t || !t) return t;
     var e = t[Symbol.toPrimitive];
     if (void 0 !== e) {
-      var i = e.call(t, r);
-      if ("object" != typeof i) return i;
+      var i2 = e.call(t, r);
+      if ("object" != typeof i2) return i2;
       throw new TypeError("@@toPrimitive must return a primitive value.");
     }
     return ("string" === r ? String : Number)(t);
   }
   function _toPropertyKey(t) {
-    var i = _toPrimitive(t, "string");
-    return "symbol" == typeof i ? i : i + "";
+    var i2 = _toPrimitive(t, "string");
+    return "symbol" == typeof i2 ? i2 : i2 + "";
   }
   var Logger = class {
     constructor(label, logger2) {
@@ -2476,9 +1188,9 @@
     let char2;
     let char3;
     let out = "";
-    let i = 0;
-    while (i < len) {
-      c = array[i++];
+    let i2 = 0;
+    while (i2 < len) {
+      c = array[i2++];
       if (c === 0 && exitOnNull) {
         return out;
       } else if (c === 0 || c === 3) {
@@ -2497,12 +1209,12 @@
           break;
         case 12:
         case 13:
-          char2 = array[i++];
+          char2 = array[i2++];
           out += String.fromCharCode((c & 31) << 6 | char2 & 63);
           break;
         case 14:
-          char2 = array[i++];
-          char3 = array[i++];
+          char2 = array[i2++];
+          char3 = array[i2++];
           out += String.fromCharCode((c & 15) << 12 | (char2 & 63) << 6 | (char3 & 63) << 0);
           break;
       }
@@ -2511,8 +1223,8 @@
   }
   function arrayToHex(array) {
     let str = "";
-    for (let i = 0; i < array.length; i++) {
-      let h = array[i].toString(16);
+    for (let i2 = 0; i2 < array.length; i2++) {
+      let h = array[i2].toString(16);
       if (h.length < 2) {
         h = "0" + h;
       }
@@ -2523,8 +1235,8 @@
   function hexToArrayBuffer(str) {
     return Uint8Array.from(str.replace(/^0x/, "").replace(/([\da-fA-F]{2}) ?/g, "0x$1 ").replace(/ +$/, "").split(" ")).buffer;
   }
-  function getDefaultExportFromCjs(x) {
-    return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
+  function getDefaultExportFromCjs(x2) {
+    return x2 && x2.__esModule && Object.prototype.hasOwnProperty.call(x2, "default") ? x2["default"] : x2;
   }
   var urlToolkit = { exports: {} };
   var hasRequiredUrlToolkit;
@@ -2959,7 +1671,7 @@
     }
   };
   var Part = class extends BaseSegment {
-    constructor(partAttrs, frag, base, index2, previous) {
+    constructor(partAttrs, frag, base, index, previous) {
       super(base);
       this.fragOffset = 0;
       this.duration = 0;
@@ -2973,7 +1685,7 @@
       this.independent = partAttrs.bool("INDEPENDENT");
       this.relurl = partAttrs.enumeratedString("URI");
       this.fragment = frag;
-      this.index = index2;
+      this.index = index;
       const byteRange = partAttrs.enumeratedString("BYTERANGE");
       if (byteRange) {
         this.setByteRange(byteRange, previous);
@@ -3042,12 +1754,12 @@
   }
   function hasMoofData(data) {
     const end = data.byteLength;
-    for (let i = 0; i < end; ) {
-      const size = readUint32(data, i);
-      if (size > 8 && data[i + 4] === 109 && data[i + 5] === 111 && data[i + 6] === 111 && data[i + 7] === 102) {
+    for (let i2 = 0; i2 < end; ) {
+      const size = readUint32(data, i2);
+      if (size > 8 && data[i2 + 4] === 109 && data[i2 + 5] === 111 && data[i2 + 6] === 111 && data[i2 + 7] === 102) {
         return true;
       }
-      i = size > 1 ? i + size : end;
+      i2 = size > 1 ? i2 + size : end;
     }
     return false;
   }
@@ -3057,47 +1769,47 @@
       return results;
     }
     const end = data.byteLength;
-    for (let i = 0; i < end; ) {
-      const size = readUint32(data, i);
-      const type = bin2str(data.subarray(i + 4, i + 8));
-      const endbox = size > 1 ? i + size : end;
+    for (let i2 = 0; i2 < end; ) {
+      const size = readUint32(data, i2);
+      const type = bin2str(data.subarray(i2 + 4, i2 + 8));
+      const endbox = size > 1 ? i2 + size : end;
       if (type === path[0]) {
         if (path.length === 1) {
-          results.push(data.subarray(i + 8, endbox));
+          results.push(data.subarray(i2 + 8, endbox));
         } else {
-          const subresults = findBox(data.subarray(i + 8, endbox), path.slice(1));
+          const subresults = findBox(data.subarray(i2 + 8, endbox), path.slice(1));
           if (subresults.length) {
             push.apply(results, subresults);
           }
         }
       }
-      i = endbox;
+      i2 = endbox;
     }
     return results;
   }
   function parseSegmentIndex(sidx) {
     const references = [];
-    const version3 = sidx[0];
-    let index2 = 8;
-    const timescale = readUint32(sidx, index2);
-    index2 += 4;
+    const version2 = sidx[0];
+    let index = 8;
+    const timescale = readUint32(sidx, index);
+    index += 4;
     let earliestPresentationTime = 0;
     let firstOffset = 0;
-    if (version3 === 0) {
-      earliestPresentationTime = readUint32(sidx, index2);
-      firstOffset = readUint32(sidx, index2 + 4);
-      index2 += 8;
+    if (version2 === 0) {
+      earliestPresentationTime = readUint32(sidx, index);
+      firstOffset = readUint32(sidx, index + 4);
+      index += 8;
     } else {
-      earliestPresentationTime = readUint64(sidx, index2);
-      firstOffset = readUint64(sidx, index2 + 8);
-      index2 += 16;
+      earliestPresentationTime = readUint64(sidx, index);
+      firstOffset = readUint64(sidx, index + 8);
+      index += 16;
     }
-    index2 += 2;
+    index += 2;
     let startByte = sidx.length + firstOffset;
-    const referencesCount = readUint16(sidx, index2);
-    index2 += 2;
-    for (let i = 0; i < referencesCount; i++) {
-      let referenceIndex = index2;
+    const referencesCount = readUint16(sidx, index);
+    index += 2;
+    for (let i2 = 0; i2 < referencesCount; i2++) {
+      let referenceIndex = index;
       const referenceInfo = readUint32(sidx, referenceIndex);
       referenceIndex += 4;
       const referenceSize = referenceInfo & 2147483647;
@@ -3120,12 +1832,12 @@
       });
       startByte += referenceSize;
       referenceIndex += 4;
-      index2 = referenceIndex;
+      index = referenceIndex;
     }
     return {
       earliestPresentationTime,
       timescale,
-      version: version3,
+      version: version2,
       referencesCount,
       references
     };
@@ -3133,16 +1845,16 @@
   function parseInitSegment(initSegment) {
     const result = [];
     const traks = findBox(initSegment, ["moov", "trak"]);
-    for (let i = 0; i < traks.length; i++) {
-      const trak = traks[i];
+    for (let i2 = 0; i2 < traks.length; i2++) {
+      const trak = traks[i2];
       const tkhd = findBox(trak, ["tkhd"])[0];
       if (tkhd) {
-        let version3 = tkhd[0];
-        const trackId = readUint32(tkhd, version3 === 0 ? 12 : 20);
+        let version2 = tkhd[0];
+        const trackId = readUint32(tkhd, version2 === 0 ? 12 : 20);
         const mdhd = findBox(trak, ["mdia", "mdhd"])[0];
         if (mdhd) {
-          version3 = mdhd[0];
-          const timescale = readUint32(mdhd, version3 === 0 ? 12 : 20);
+          version2 = mdhd[0];
+          const timescale = readUint32(mdhd, version2 === 0 ? 12 : 20);
           const hdlr = findBox(trak, ["mdia", "hdlr"])[0];
           if (hdlr) {
             const hdlrType = bin2str(hdlr.subarray(8, 12));
@@ -3227,38 +1939,38 @@
         const codecBox = findBox(sampleEntries, [fourCC])[0];
         const esdsBox = findBox(codecBox.subarray(28), ["esds"])[0];
         if (esdsBox && esdsBox.length > 7) {
-          let i = 4;
-          if (esdsBox[i++] !== 3) {
+          let i2 = 4;
+          if (esdsBox[i2++] !== 3) {
             break;
           }
-          i = skipBERInteger(esdsBox, i);
-          i += 2;
-          const flags = esdsBox[i++];
+          i2 = skipBERInteger(esdsBox, i2);
+          i2 += 2;
+          const flags = esdsBox[i2++];
           if (flags & 128) {
-            i += 2;
+            i2 += 2;
           }
           if (flags & 64) {
-            i += esdsBox[i++];
+            i2 += esdsBox[i2++];
           }
-          if (esdsBox[i++] !== 4) {
+          if (esdsBox[i2++] !== 4) {
             break;
           }
-          i = skipBERInteger(esdsBox, i);
-          const objectType = esdsBox[i++];
+          i2 = skipBERInteger(esdsBox, i2);
+          const objectType = esdsBox[i2++];
           if (objectType === 64) {
             codec += "." + toHex(objectType);
           } else {
             break;
           }
-          i += 12;
-          if (esdsBox[i++] !== 5) {
+          i2 += 12;
+          if (esdsBox[i2++] !== 5) {
             break;
           }
-          i = skipBERInteger(esdsBox, i);
-          const firstByte = esdsBox[i++];
+          i2 = skipBERInteger(esdsBox, i2);
+          const firstByte = esdsBox[i2++];
           let audioObjectType = (firstByte & 248) >> 3;
           if (audioObjectType === 31) {
-            audioObjectType += 1 + ((firstByte & 7) << 3) + ((esdsBox[i] & 224) >> 5);
+            audioObjectType += 1 + ((firstByte & 7) << 3) + ((esdsBox[i2] & 224) >> 5);
           }
           codec += "." + audioObjectType;
         }
@@ -3279,8 +1991,8 @@
           codec += "." + reverse32BitInt(profileCompat).toString(16).toUpperCase();
           codec += "." + tierFlag + levelIDC;
           let constraintString = "";
-          for (let i = constraintIndicator.length; i--; ) {
-            const byte = constraintIndicator[i];
+          for (let i2 = constraintIndicator.length; i2--; ) {
+            const byte = constraintIndicator[i2];
             if (byte || constraintString) {
               const encodedByte = byte.toString(16).toUpperCase();
               constraintString = "." + encodedByte + constraintString;
@@ -3349,19 +2061,19 @@
   }
   function reverse32BitInt(val) {
     let result = 0;
-    for (let i = 0; i < 32; i++) {
-      result |= (val >> i & 1) << 32 - 1 - i;
+    for (let i2 = 0; i2 < 32; i2++) {
+      result |= (val >> i2 & 1) << 32 - 1 - i2;
     }
     return result >>> 0;
   }
-  function skipBERInteger(bytes, i) {
-    const limit = i + 5;
-    while (bytes[i++] & 128 && i < limit) {
+  function skipBERInteger(bytes, i2) {
+    const limit = i2 + 5;
+    while (bytes[i2++] & 128 && i2 < limit) {
     }
-    return i;
+    return i2;
   }
-  function toHex(x) {
-    return ("0" + x.toString(16).toUpperCase()).slice(-2);
+  function toHex(x2) {
+    return ("0" + x2.toString(16).toUpperCase()).slice(-2);
   }
   function addLeadingZero(num) {
     return (num < 10 ? "0" : "") + num;
@@ -3424,8 +2136,8 @@
   function getSampleData(data, initData, logger2) {
     const tracks = {};
     const trafs = findBox(data, ["moof", "traf"]);
-    for (let i = 0; i < trafs.length; i++) {
-      const traf = trafs[i];
+    for (let i2 = 0; i2 < trafs.length; i2++) {
+      const traf = trafs[i2];
       const tfhd = findBox(traf, ["tfhd"])[0];
       const id = readUint32(tfhd, 4);
       const track = initData[id];
@@ -3442,9 +2154,9 @@
       const trackTimes = tracks[id];
       const tfdt = findBox(traf, ["tfdt"])[0];
       if (tfdt) {
-        const version3 = tfdt[0];
+        const version2 = tfdt[0];
         let baseTime = readUint32(tfdt, 4);
-        if (version3 === 1) {
+        if (version2 === 1) {
           if (baseTime === UINT32_MAX$1) {
             logger2.warn(`[mp4-demuxer]: Ignoring assumed invalid signed 64-bit track fragment decode time`);
           } else {
@@ -3544,8 +2256,8 @@
       let sidxMinStart = Infinity;
       let sidxMaxEnd = 0;
       const sidxs = findBox(data, ["sidx"]);
-      for (let i = 0; i < sidxs.length; i++) {
-        const sidx = parseSegmentIndex(sidxs[i]);
+      for (let i2 = 0; i2 < sidxs.length; i2++) {
+        const sidx = parseSegmentIndex(sidxs[i2]);
         if (sidx != null && sidx.references) {
           sidxMinStart = Math.min(sidxMinStart, sidx.earliestPresentationTime / sidx.timescale);
           const subSegmentDuration = sidx.references.reduce((dur, ref) => dur + ref.info.duration || 0, 0);
@@ -3595,9 +2307,9 @@
       const trafs = findBox(moof, ["traf"]);
       trafs.map((traf) => {
         const baseTime = findBox(traf, ["tfdt"]).map((tfdt) => {
-          const version3 = tfdt[0];
+          const version2 = tfdt[0];
           let result = readUint32(tfdt, 4);
-          if (version3 === 1) {
+          if (version2 === 1) {
             result *= Math.pow(2, 32);
             result += readUint32(tfdt, 8);
           }
@@ -3639,7 +2351,7 @@
               isHEVCFlavor = isHEVC(track.codec);
             }
             findBox(traf, ["trun"]).map((trun) => {
-              const version3 = trun[0];
+              const version2 = trun[0];
               const flags = readUint32(trun, 0) & 16777215;
               const dataOffsetPresent = (flags & 1) !== 0;
               let dataOffset = 0;
@@ -3678,7 +2390,7 @@
                   trunOffset += 4;
                 }
                 if (sampleCompositionOffsetsPresent) {
-                  if (version3 === 0) {
+                  if (version2 === 0) {
                     compositionOffset = readUint32(trun, trunOffset);
                   } else {
                     compositionOffset = readSint32(trun, trunOffset);
@@ -3774,8 +2486,8 @@
                 const byteArray = new Uint8Array(totalBytes);
                 if (enabled) {
                   byteArray[0] = firstByte;
-                  for (let i = 1; i < totalBytes; i++) {
-                    byteArray[i] = data[payPtr++];
+                  for (let i2 = 1; i2 < totalBytes; i2++) {
+                    byteArray[i2] = data[payPtr++];
                   }
                 }
                 samples.push({
@@ -3791,17 +2503,17 @@
       } else if (payloadType === 5) {
         if (payloadSize > 16) {
           const uuidStrArray = [];
-          for (let i = 0; i < 16; i++) {
+          for (let i2 = 0; i2 < 16; i2++) {
             const _b = data[payPtr++].toString(16);
             uuidStrArray.push(_b.length == 1 ? "0" + _b : _b);
-            if (i === 3 || i === 5 || i === 7 || i === 9) {
+            if (i2 === 3 || i2 === 5 || i2 === 7 || i2 === 9) {
               uuidStrArray.push("-");
             }
           }
           const length = payloadSize - 16;
           const userDataBytes = new Uint8Array(length);
-          for (let i = 0; i < length; i++) {
-            userDataBytes[i] = data[payPtr++];
+          for (let i2 = 0; i2 < length; i2++) {
+            userDataBytes[i2] = data[payPtr++];
           }
           samples.push({
             payloadType,
@@ -3817,13 +2529,13 @@
   function discardEPB(data) {
     const length = data.byteLength;
     const EPBPositions = [];
-    let i = 1;
-    while (i < length - 2) {
-      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 3) {
-        EPBPositions.push(i + 2);
-        i += 2;
+    let i2 = 1;
+    while (i2 < length - 2) {
+      if (data[i2] === 0 && data[i2 + 1] === 0 && data[i2 + 2] === 3) {
+        EPBPositions.push(i2 + 2);
+        i2 += 2;
       } else {
-        i++;
+        i2++;
       }
     }
     if (EPBPositions.length === 0) {
@@ -3832,17 +2544,17 @@
     const newLength = length - EPBPositions.length;
     const newData = new Uint8Array(newLength);
     let sourceIndex = 0;
-    for (i = 0; i < newLength; sourceIndex++, i++) {
+    for (i2 = 0; i2 < newLength; sourceIndex++, i2++) {
       if (sourceIndex === EPBPositions[0]) {
         sourceIndex++;
         EPBPositions.shift();
       }
-      newData[i] = data[sourceIndex];
+      newData[i2] = data[sourceIndex];
     }
     return newData;
   }
   function parseEmsg(data) {
-    const version3 = data[0];
+    const version2 = data[0];
     let schemeIdUri = "";
     let value = "";
     let timeScale = 0;
@@ -3851,7 +2563,7 @@
     let eventDuration = 0;
     let id = 0;
     let offset = 0;
-    if (version3 === 0) {
+    if (version2 === 0) {
       while (bin2str(data.subarray(offset, offset + 1)) !== "\0") {
         schemeIdUri += bin2str(data.subarray(offset, offset + 1));
         offset += 1;
@@ -3869,7 +2581,7 @@
       eventDuration = readUint32(data, 20);
       id = readUint32(data, 24);
       offset = 28;
-    } else if (version3 === 1) {
+    } else if (version2 === 1) {
       offset += 4;
       timeScale = readUint32(data, offset);
       offset += 4;
@@ -3914,9 +2626,9 @@
   function mp4Box(type, ...payload) {
     const len = payload.length;
     let size = 8;
-    let i = len;
-    while (i--) {
-      size += payload[i].byteLength;
+    let i2 = len;
+    while (i2--) {
+      size += payload[i2].byteLength;
     }
     const result = new Uint8Array(size);
     result[0] = size >> 24 & 255;
@@ -3924,9 +2636,9 @@
     result[2] = size >> 8 & 255;
     result[3] = size & 255;
     result.set(type, 4);
-    for (i = 0, size = 8; i < len; i++) {
-      result.set(payload[i], size);
-      size += payload[i].byteLength;
+    for (i2 = 0, size = 8; i2 < len; i2++) {
+      result.set(payload[i2], size);
+      size += payload[i2].byteLength;
     }
     return result;
   }
@@ -3934,14 +2646,14 @@
     if (systemId.byteLength !== 16) {
       throw new RangeError("Invalid system id");
     }
-    let version3;
+    let version2;
     let kids;
     {
-      version3 = 0;
+      version2 = 0;
       kids = new Uint8Array();
     }
     let kidCount;
-    if (version3 > 0) {
+    if (version2 > 0) {
       kidCount = new Uint8Array(4);
       if (keyids.length > 0) {
         new DataView(kidCount.buffer).setUint32(0, keyids.length, false);
@@ -3956,7 +2668,7 @@
     return mp4Box(
       [112, 115, 115, 104],
       new Uint8Array([
-        version3,
+        version2,
         0,
         0,
         0
@@ -4001,8 +2713,8 @@
         size
       };
     }
-    const version3 = view2.getUint32(8) >>> 24;
-    if (version3 !== 0 && version3 !== 1) {
+    const version2 = view2.getUint32(8) >>> 24;
+    if (version2 !== 0 && version2 !== 1) {
       return {
         offset,
         size
@@ -4013,7 +2725,7 @@
     let kids = null;
     let data = null;
     let dataSizeOffset = 0;
-    if (version3 === 0) {
+    if (version2 === 0) {
       dataSizeOffset = 28;
     } else {
       const kidCounts = view2.getUint32(28);
@@ -4024,8 +2736,8 @@
         };
       }
       kids = [];
-      for (let i = 0; i < kidCounts; i++) {
-        kids.push(new Uint8Array(buffer, offset + 32 + i * 16, 16));
+      for (let i2 = 0; i2 < kidCounts; i2++) {
+        kids.push(new Uint8Array(buffer, offset + 32 + i2 * 16, 16));
       }
       dataSizeOffset = 32 + kidCounts * 16;
     }
@@ -4044,7 +2756,7 @@
     }
     data = new Uint8Array(buffer, offset + dataSizeOffset + 4, dataSizeOrKidCount);
     return {
-      version: version3,
+      version: version2,
       systemId,
       kids,
       data,
@@ -4182,12 +2894,12 @@
       // and demuxer can fallback to 'audio/mpeg' or 'audio/mp4;codecs="mp3"'
       "mp4a.40.34": ["mp3"]
     }[lowerCaseCodec];
-    for (let i = 0; i < codecsToCheck.length; i++) {
+    for (let i2 = 0; i2 < codecsToCheck.length; i2++) {
       var _getMediaSource;
-      if (isCodecMediaSourceSupported(codecsToCheck[i], "audio", preferManagedMediaSource)) {
-        CODEC_COMPATIBLE_NAMES[lowerCaseCodec] = codecsToCheck[i];
-        return codecsToCheck[i];
-      } else if (codecsToCheck[i] === "mp3" && (_getMediaSource = getMediaSource(preferManagedMediaSource)) != null && _getMediaSource.isTypeSupported("audio/mpeg")) {
+      if (isCodecMediaSourceSupported(codecsToCheck[i2], "audio", preferManagedMediaSource)) {
+        CODEC_COMPATIBLE_NAMES[lowerCaseCodec] = codecsToCheck[i2];
+        return codecsToCheck[i2];
+      } else if (codecsToCheck[i2] === "mp3" && (_getMediaSource = getMediaSource(preferManagedMediaSource)) != null && _getMediaSource.isTypeSupported("audio/mpeg")) {
         return "";
       }
     }
@@ -4195,15 +2907,15 @@
   }
   var AUDIO_CODEC_REGEXP = /flac|opus|mp4a\.40\.34/i;
   function getCodecCompatibleName(codec, preferManagedMediaSource = true) {
-    return codec.replace(AUDIO_CODEC_REGEXP, (m) => getCodecCompatibleNameLower(m.toLowerCase(), preferManagedMediaSource));
+    return codec.replace(AUDIO_CODEC_REGEXP, (m2) => getCodecCompatibleNameLower(m2.toLowerCase(), preferManagedMediaSource));
   }
   function replaceVideoCodec(originalCodecs, newVideoCodec) {
     const codecs = [];
     if (originalCodecs) {
       const allCodecs = originalCodecs.split(",");
-      for (let i = 0; i < allCodecs.length; i++) {
-        if (!isCodecType(allCodecs[i], "video")) {
-          codecs.push(allCodecs[i]);
+      for (let i2 = 0; i2 < allCodecs.length; i2++) {
+        if (!isCodecType(allCodecs[i2], "video")) {
+          codecs.push(allCodecs[i2]);
         }
       }
     }
@@ -4222,9 +2934,9 @@
       const levelCodecs = levelCodec.split(",");
       if (levelCodecs.length > 1) {
         if (parsedCodec) {
-          for (let i = levelCodecs.length; i--; ) {
-            if (levelCodecs[i].substring(0, 4) === parsedCodec.substring(0, 4)) {
-              return levelCodecs[i];
+          for (let i2 = levelCodecs.length; i2--; ) {
+            if (levelCodecs[i2].substring(0, 4) === parsedCodec.substring(0, 4)) {
+              return levelCodecs[i2];
             }
           }
         }
@@ -4238,10 +2950,10 @@
   }
   function convertAVC1ToAVCOTI(videoCodecs) {
     const codecs = videoCodecs.split(",");
-    for (let i = 0; i < codecs.length; i++) {
-      const avcdata = codecs[i].split(".");
+    for (let i2 = 0; i2 < codecs.length; i2++) {
+      const avcdata = codecs[i2].split(".");
       if (avcdata.length > 2 && avcdata[0] === "avc1") {
-        codecs[i] = `avc1.${parseInt(avcdata[1]).toString(16)}${("000" + parseInt(avcdata[2]).toString(16)).slice(-4)}`;
+        codecs[i2] = `avc1.${parseInt(avcdata[1]).toString(16)}${("000" + parseInt(avcdata[2]).toString(16)).slice(-4)}`;
       }
     }
     return codecs.join(",");
@@ -4250,8 +2962,8 @@
     if (videoCodec.startsWith("av01.")) {
       const av1params = videoCodec.split(".");
       const placeholders = ["0", "111", "01", "01", "01", "0"];
-      for (let i = av1params.length; i > 4 && i < 10; i++) {
-        av1params[i] = placeholders[i - 4];
+      for (let i2 = av1params.length; i2 > 4 && i2 < 10; i2++) {
+        av1params[i2] = placeholders[i2 - 4];
       }
       return av1params.join(".");
     }
@@ -4339,15 +3051,15 @@
     const videoCount = videoDecodeList.length;
     const audioDecodeList = makeAudioConfigurations(level, audioTracksByGroup, videoCount > 0);
     const audioCount = audioDecodeList.length;
-    for (let i = videoCount || 1 * audioCount || 1; i--; ) {
+    for (let i2 = videoCount || 1 * audioCount || 1; i2--; ) {
       const configuration = {
         type: "media-source"
       };
       if (videoCount) {
-        configuration.video = videoDecodeList[i % videoCount];
+        configuration.video = videoDecodeList[i2 % videoCount];
       }
       if (audioCount) {
-        configuration.audio = audioDecodeList[i % audioCount];
+        configuration.audio = audioDecodeList[i2 % audioCount];
         const audioBitrate = configuration.audio.bitrate;
         if (configuration.video && audioBitrate) {
           configuration.video.bitrate -= audioBitrate;
@@ -4712,8 +3424,8 @@
       preferHDR,
       allowedVideoRanges
     } = getVideoSelectionOptions(currentVideoRange, videoPreference);
-    for (let i = codecSets.length; i--; ) {
-      const tier = codecTiers[codecSets[i]];
+    for (let i2 = codecSets.length; i2--; ) {
+      const tier = codecTiers[codecSets[i2]];
       hasStereo || (hasStereo = tier.channels[2] > 0);
       minHeight = Math.min(minHeight, tier.minHeight);
       minFramerate = Math.min(minFramerate, tier.minFramerate);
@@ -4833,7 +3545,7 @@
     });
   }
   function getCodecTiers(levels, audioTracksByGroup, minAutoLevel, maxAutoLevel) {
-    return levels.slice(minAutoLevel, maxAutoLevel + 1).reduce((tiers, level, index2) => {
+    return levels.slice(minAutoLevel, maxAutoLevel + 1).reduce((tiers, level, index) => {
       if (!level.codecSet) {
         return tiers;
       }
@@ -4844,7 +3556,7 @@
           minBitrate: Infinity,
           minHeight: Infinity,
           minFramerate: Infinity,
-          minIndex: index2,
+          minIndex: index,
           maxScore: 0,
           videoRanges: {
             SDR: 0
@@ -4860,7 +3572,7 @@
       const lesserWidthOrHeight = Math.min(level.height, level.width);
       tier.minHeight = Math.min(tier.minHeight, lesserWidthOrHeight);
       tier.minFramerate = Math.min(tier.minFramerate, level.frameRate);
-      tier.minIndex = Math.min(tier.minIndex, index2);
+      tier.minIndex = Math.min(tier.minIndex, index);
       tier.maxScore = Math.max(tier.maxScore, level.score);
       tier.fragmentError += level.fragmentError;
       tier.videoRanges[level.videoRange] = (tier.videoRanges[level.videoRange] || 0) + 1;
@@ -4903,15 +3615,15 @@
   }
   function findMatchingOption(option, tracks, matchPredicate) {
     if ("attrs" in option) {
-      const index2 = tracks.indexOf(option);
-      if (index2 !== -1) {
-        return index2;
+      const index = tracks.indexOf(option);
+      if (index !== -1) {
+        return index;
       }
     }
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i];
+    for (let i2 = 0; i2 < tracks.length; i2++) {
+      const track = tracks[i2];
       if (matchesOption(option, track, matchPredicate)) {
-        return i;
+        return i2;
       }
     }
     return -1;
@@ -4947,10 +3659,10 @@
   }
   function findClosestLevelWithAudioGroup(option, levels, allAudioTracks, searchIndex, matchPredicate) {
     const currentLevel = levels[searchIndex];
-    const variants = levels.reduce((variantMap, level, index2) => {
+    const variants = levels.reduce((variantMap, level, index) => {
       const uri = level.uri;
       const renditions2 = variantMap[uri] || (variantMap[uri] = []);
-      renditions2.push(index2);
+      renditions2.push(index);
       return variantMap;
     }, {});
     const renditions = variants[currentLevel.uri];
@@ -4978,14 +3690,14 @@
     });
   }
   function searchDownAndUpList(arr, searchIndex, predicate) {
-    for (let i = searchIndex; i > -1; i--) {
-      if (predicate(arr[i])) {
-        return i;
+    for (let i2 = searchIndex; i2 > -1; i2--) {
+      if (predicate(arr[i2])) {
+        return i2;
       }
     }
-    for (let i = searchIndex + 1; i < arr.length; i++) {
-      if (predicate(arr[i])) {
-        return i;
+    for (let i2 = searchIndex + 1; i2 < arr.length; i2++) {
+      if (predicate(arr[i2])) {
+        return i2;
       }
     }
     return -1;
@@ -5528,10 +4240,10 @@
       const currentFragDuration = partCurrent ? partCurrent.duration : fragCurrent ? fragCurrent.duration : 0;
       const ttfbEstimateSec = this.bwEstimator.getEstimateTTFB() / 1e3;
       const levelsSkipped = [];
-      for (let i = maxAutoLevel; i >= minAutoLevel; i--) {
+      for (let i2 = maxAutoLevel; i2 >= minAutoLevel; i2--) {
         var _levelInfo$supportedR;
-        const levelInfo = levels[i];
-        const upSwitch = i > selectionBaseLevel;
+        const levelInfo = levels[i2];
+        const upSwitch = i2 > selectionBaseLevel;
         if (!levelInfo) {
           continue;
         }
@@ -5545,20 +4257,20 @@
               }
               levelInfo.supportedResult = decodingInfo;
               const levels2 = this.hls.levels;
-              const index2 = levels2.indexOf(levelInfo);
+              const index = levels2.indexOf(levelInfo);
               if (decodingInfo.error) {
-                this.warn(`MediaCapabilities decodingInfo error: "${decodingInfo.error}" for level ${index2} ${stringify(decodingInfo)}`);
+                this.warn(`MediaCapabilities decodingInfo error: "${decodingInfo.error}" for level ${index} ${stringify(decodingInfo)}`);
               } else if (!decodingInfo.supported) {
-                this.warn(`Unsupported MediaCapabilities decodingInfo result for level ${index2} ${stringify(decodingInfo)}`);
-                if (index2 > -1 && levels2.length > 1) {
-                  this.log(`Removing unsupported level ${index2}`);
-                  this.hls.removeLevel(index2);
+                this.warn(`Unsupported MediaCapabilities decodingInfo result for level ${index} ${stringify(decodingInfo)}`);
+                if (index > -1 && levels2.length > 1) {
+                  this.log(`Removing unsupported level ${index}`);
+                  this.hls.removeLevel(index);
                   if (this.hls.loadLevel === -1) {
                     this.hls.nextLoadLevel = 0;
                   }
                 }
               } else if (decodingInfo.decodingInfoResults.some((info) => info.smooth === false || info.powerEfficient === false)) {
-                this.log(`MediaCapabilities decodingInfo for level ${index2} not smooth or powerEfficient: ${stringify(decodingInfo)}`);
+                this.log(`MediaCapabilities decodingInfo for level ${index} not smooth or powerEfficient: ${stringify(decodingInfo)}`);
               }
             }).catch((error) => {
               this.warn(`Error handling MediaCapabilities decodingInfo: ${error}`);
@@ -5568,8 +4280,8 @@
           }
         }
         if (currentCodecSet && levelInfo.codecSet !== currentCodecSet || currentVideoRange && levelInfo.videoRange !== currentVideoRange || upSwitch && currentFrameRate > levelInfo.frameRate || !upSwitch && currentFrameRate > 0 && currentFrameRate < levelInfo.frameRate || (_levelInfo$supportedR = levelInfo.supportedResult) != null && (_levelInfo$supportedR = _levelInfo$supportedR.decodingInfoResults) != null && _levelInfo$supportedR.some((info) => info.smooth === false)) {
-          if (!firstSelection || i !== minStartIndex) {
-            levelsSkipped.push(i);
+          if (!firstSelection || i2 !== minStartIndex) {
+            levelsSkipped.push(i2);
             continue;
           }
         }
@@ -5586,23 +4298,23 @@
         const canSwitchWithinTolerance = (
           // if adjusted bw is greater than level bitrate AND
           adjustedbw >= bitrate && // no level change, or new level has no error history
-          (i === lastLoadedFragLevel || levelInfo.loadError === 0 && levelInfo.fragmentError === 0) && // fragment fetchDuration unknown OR live stream OR fragment fetchDuration less than max allowed fetch duration, then this level matches
+          (i2 === lastLoadedFragLevel || levelInfo.loadError === 0 && levelInfo.fragmentError === 0) && // fragment fetchDuration unknown OR live stream OR fragment fetchDuration less than max allowed fetch duration, then this level matches
           // we don't account for max Fetch Duration for live streams, this is to avoid switching down when near the edge of live sliding window ...
           // special case to support startLevel = -1 (bitrateTest) on live streams : in that case we should not exit loop so that findBestLevel will return -1
           (fetchDuration <= ttfbEstimateSec || !isFiniteNumber(fetchDuration) || live && !this.bitrateTestDelay || fetchDuration < maxFetchDuration)
         );
         if (canSwitchWithinTolerance) {
           const forcedAutoLevel = this.forcedAutoLevel;
-          if (i !== loadLevel && (forcedAutoLevel === -1 || forcedAutoLevel !== loadLevel)) {
+          if (i2 !== loadLevel && (forcedAutoLevel === -1 || forcedAutoLevel !== loadLevel)) {
             if (levelsSkipped.length) {
               this.trace(`Skipped level(s) ${levelsSkipped.join(",")} of ${maxAutoLevel} max with CODECS and VIDEO-RANGE:"${levels[levelsSkipped[0]].codecs}" ${levels[levelsSkipped[0]].videoRange}; not compatible with "${currentCodecSet}" ${currentVideoRange}`);
             }
-            this.info(`switch candidate:${selectionBaseLevel}->${i} adjustedbw(${Math.round(adjustedbw)})-bitrate=${Math.round(adjustedbw - bitrate)} ttfb:${ttfbEstimateSec.toFixed(1)} avgDuration:${avgDuration.toFixed(1)} maxFetchDuration:${maxFetchDuration.toFixed(1)} fetchDuration:${fetchDuration.toFixed(1)} firstSelection:${firstSelection} codecSet:${levelInfo.codecSet} videoRange:${levelInfo.videoRange} hls.loadLevel:${loadLevel}`);
+            this.info(`switch candidate:${selectionBaseLevel}->${i2} adjustedbw(${Math.round(adjustedbw)})-bitrate=${Math.round(adjustedbw - bitrate)} ttfb:${ttfbEstimateSec.toFixed(1)} avgDuration:${avgDuration.toFixed(1)} maxFetchDuration:${maxFetchDuration.toFixed(1)} fetchDuration:${fetchDuration.toFixed(1)} firstSelection:${firstSelection} codecSet:${levelInfo.codecSet} videoRange:${levelInfo.videoRange} hls.loadLevel:${loadLevel}`);
           }
           if (firstSelection) {
-            this.firstSelection = i;
+            this.firstSelection = i2;
           }
-          return i;
+          return i2;
         }
       }
       return -1;
@@ -6082,8 +4794,8 @@
           type: playlistErrorType,
           groupId: playlistErrorGroupId
         } = (_data$context2 = data.context) != null ? _data$context2 : {};
-        for (let i = levels.length; i--; ) {
-          const candidate = (i + loadLevel) % levels.length;
+        for (let i2 = levels.length; i2--; ) {
+          const candidate = (i2 + loadLevel) % levels.length;
           if (candidate !== loadLevel && candidate >= minAutoLevel && candidate <= maxAutoLevel && levels[candidate].loadError === 0) {
             var _level$audioGroups, _level$subtitleGroups;
             const levelCandidate = levels[candidate];
@@ -6175,14 +4887,14 @@
           if (levelKey) {
             const levels = this.hls.levels;
             const levelCountWithError = levels.length;
-            for (let i = levelCountWithError; i--; ) {
-              if (this.variantHasKey(levels[i], levelKey)) {
+            for (let i2 = levelCountWithError; i2--; ) {
+              if (this.variantHasKey(levels[i2], levelKey)) {
                 var _levels$i$audioGroups, _data$frag3;
-                this.log(`Banned key found in level ${i} (${levels[i].bitrate}bps) or audio group "${(_levels$i$audioGroups = levels[i].audioGroups) == null ? void 0 : _levels$i$audioGroups.join(",")}" (${(_data$frag3 = data.frag) == null ? void 0 : _data$frag3.type} fragment) ${arrayToHex(levelKey.keyId || [])}`);
-                levels[i].fragmentError++;
-                levels[i].loadError++;
-                this.log(`Removing level ${i} with key error (${data.error})`);
-                this.hls.removeLevel(i);
+                this.log(`Banned key found in level ${i2} (${levels[i2].bitrate}bps) or audio group "${(_levels$i$audioGroups = levels[i2].audioGroups) == null ? void 0 : _levels$i$audioGroups.join(",")}" (${(_data$frag3 = data.frag) == null ? void 0 : _data$frag3.type} fragment) ${arrayToHex(levelKey.keyId || [])}`);
+                levels[i2].fragmentError++;
+                levels[i2].loadError++;
+                this.log(`Removing level ${i2} with key error (${data.error})`);
+                this.hls.removeLevel(i2);
               }
             }
             const frag = data.frag;
@@ -6211,10 +4923,10 @@
         if (data.details === ErrorDetails.BUFFER_ADD_CODEC_ERROR && data.mimeType && data.sourceBufferName !== "audiovideo") {
           const codec = getCodecsForMimeType(data.mimeType);
           const levels = this.hls.levels;
-          for (let i = levels.length; i--; ) {
-            if (levels[i][`${data.sourceBufferName}Codec`] === codec) {
-              this.log(`Removing level ${i} for ${data.details} ("${codec}" not supported)`);
-              this.hls.removeLevel(i);
+          for (let i2 = levels.length; i2--; ) {
+            if (levels[i2][`${data.sourceBufferName}Codec`] === codec) {
+              this.log(`Removing level ${i2} for ${data.details} ("${codec}" not supported)`);
+              this.hls.removeLevel(i2);
             }
           }
         }
@@ -6285,8 +4997,8 @@
     getAppendedFrag(position, levelType) {
       const activeParts = this.activePartLists[levelType];
       if (activeParts) {
-        for (let i = activeParts.length; i--; ) {
-          const activePart = activeParts[i];
+        for (let i2 = activeParts.length; i2--; ) {
+          const activePart = activeParts[i2];
           if (!activePart) {
             break;
           }
@@ -6310,8 +5022,8 @@
         fragments
       } = this;
       const keys = Object.keys(fragments);
-      for (let i = keys.length; i--; ) {
-        const fragmentEntity = fragments[keys[i]];
+      for (let i2 = keys.length; i2--; ) {
+        const fragmentEntity = fragments[keys[i2]];
         if ((fragmentEntity == null ? void 0 : fragmentEntity.body.type) === levelType && (!buffered || fragmentEntity.buffered)) {
           const frag = fragmentEntity.body;
           if (frag.start <= position && position <= frag.end) {
@@ -6440,18 +5152,18 @@
       const endPTS = fragment.end;
       const minEndPTS = fragment.minEndPTS || endPTS;
       const maxStartPTS = fragment.maxStartPTS || startPTS;
-      for (let i = 0; i < timeRange.length; i++) {
-        const startTime = timeRange.start(i) - this.bufferPadding;
-        const endTime = timeRange.end(i) + this.bufferPadding;
+      for (let i2 = 0; i2 < timeRange.length; i2++) {
+        const startTime = timeRange.start(i2) - this.bufferPadding;
+        const endTime = timeRange.end(i2) + this.bufferPadding;
         if (maxStartPTS >= startTime && minEndPTS <= endTime) {
           buffered.time.push({
-            startPTS: Math.max(startPTS, timeRange.start(i)),
-            endPTS: Math.min(endPTS, timeRange.end(i))
+            startPTS: Math.max(startPTS, timeRange.start(i2)),
+            endPTS: Math.min(endPTS, timeRange.end(i2))
           });
           break;
         } else if (startPTS < endTime && endPTS > startTime) {
-          const start = Math.max(startPTS, timeRange.start(i));
-          const end = Math.min(endPTS, timeRange.end(i));
+          const start = Math.max(startPTS, timeRange.start(i2));
+          const end = Math.min(endPTS, timeRange.end(i2));
           if (end > start) {
             buffered.partial = true;
             buffered.time.push({
@@ -6518,9 +5230,9 @@
     isTimeBuffered(startPTS, endPTS, timeRange) {
       let startTime;
       let endTime;
-      for (let i = 0; i < timeRange.length; i++) {
-        startTime = timeRange.start(i) - this.bufferPadding;
-        endTime = timeRange.end(i) + this.bufferPadding;
+      for (let i2 = 0; i2 < timeRange.length; i2++) {
+        startTime = timeRange.start(i2) - this.bufferPadding;
+        endTime = timeRange.end(i2) + this.bufferPadding;
         if (startPTS >= startTime && endPTS <= endTime) {
           return true;
         }
@@ -6585,8 +5297,8 @@
       if (!type) {
         return keys.length > 0;
       }
-      for (let i = keys.length; i--; ) {
-        const fragmentEntity = fragments[keys[i]];
+      for (let i2 = keys.length; i2--; ) {
+        const fragmentEntity = fragments[keys[i2]];
         if ((fragmentEntity == null ? void 0 : fragmentEntity.body.type) === type) {
           return true;
         }
@@ -6718,8 +5430,8 @@
     uint8ArrayToUint32Array_(arrayBuffer) {
       const view2 = new DataView(arrayBuffer);
       const newArray = new Uint32Array(4);
-      for (let i = 0; i < 4; i++) {
-        newArray[i] = view2.getUint32(i * 4);
+      for (let i2 = 0; i2 < 4; i2++) {
+        newArray[i2] = view2.getUint32(i2 * 4);
       }
       return newArray;
     }
@@ -6737,38 +5449,38 @@
       const invSubMix2 = invSubMix[2];
       const invSubMix3 = invSubMix[3];
       const d = new Uint32Array(256);
-      let x = 0;
+      let x2 = 0;
       let xi = 0;
-      let i = 0;
-      for (i = 0; i < 256; i++) {
-        if (i < 128) {
-          d[i] = i << 1;
+      let i2 = 0;
+      for (i2 = 0; i2 < 256; i2++) {
+        if (i2 < 128) {
+          d[i2] = i2 << 1;
         } else {
-          d[i] = i << 1 ^ 283;
+          d[i2] = i2 << 1 ^ 283;
         }
       }
-      for (i = 0; i < 256; i++) {
+      for (i2 = 0; i2 < 256; i2++) {
         let sx = xi ^ xi << 1 ^ xi << 2 ^ xi << 3 ^ xi << 4;
         sx = sx >>> 8 ^ sx & 255 ^ 99;
-        sBox[x] = sx;
-        invSBox[sx] = x;
-        const x2 = d[x];
-        const x4 = d[x2];
+        sBox[x2] = sx;
+        invSBox[sx] = x2;
+        const x22 = d[x2];
+        const x4 = d[x22];
         const x8 = d[x4];
         let t = d[sx] * 257 ^ sx * 16843008;
-        subMix0[x] = t << 24 | t >>> 8;
-        subMix1[x] = t << 16 | t >>> 16;
-        subMix2[x] = t << 8 | t >>> 24;
-        subMix3[x] = t;
-        t = x8 * 16843009 ^ x4 * 65537 ^ x2 * 257 ^ x * 16843008;
+        subMix0[x2] = t << 24 | t >>> 8;
+        subMix1[x2] = t << 16 | t >>> 16;
+        subMix2[x2] = t << 8 | t >>> 24;
+        subMix3[x2] = t;
+        t = x8 * 16843009 ^ x4 * 65537 ^ x22 * 257 ^ x2 * 16843008;
         invSubMix0[sx] = t << 24 | t >>> 8;
         invSubMix1[sx] = t << 16 | t >>> 16;
         invSubMix2[sx] = t << 8 | t >>> 24;
         invSubMix3[sx] = t;
-        if (!x) {
-          x = xi = 1;
+        if (!x2) {
+          x2 = xi = 1;
         } else {
-          x = x2 ^ d[d[d[x8 ^ x2]]];
+          x2 = x22 ^ d[d[d[x8 ^ x22]]];
           xi ^= d[d[xi]];
         }
       }
@@ -6856,7 +5568,7 @@
       let t0, t1, t2, t3;
       let s0, s1, s2, s3;
       let inputWords0, inputWords1, inputWords2, inputWords3;
-      let ksRow, i;
+      let ksRow, i2;
       const swapWord = this.networkToHostOrderSwap;
       while (offset < inputInt32.length) {
         inputWords0 = swapWord(inputInt32[offset]);
@@ -6868,7 +5580,7 @@
         s2 = inputWords2 ^ invKeySchedule[2];
         s3 = inputWords1 ^ invKeySchedule[3];
         ksRow = 4;
-        for (i = 1; i < nRounds; i++) {
+        for (i2 = 1; i2 < nRounds; i2++) {
           t0 = invSubMix0[s0 >>> 24] ^ invSubMix1[s1 >> 16 & 255] ^ invSubMix2[s2 >> 8 & 255] ^ invSubMix3[s3 & 255] ^ invKeySchedule[ksRow];
           t1 = invSubMix0[s1 >>> 24] ^ invSubMix1[s2 >> 16 & 255] ^ invSubMix2[s3 >> 8 & 255] ^ invSubMix3[s0 & 255] ^ invKeySchedule[ksRow + 1];
           t2 = invSubMix0[s2 >>> 24] ^ invSubMix1[s3 >> 16 & 255] ^ invSubMix2[s0 >> 8 & 255] ^ invSubMix3[s1 & 255] ^ invKeySchedule[ksRow + 2];
@@ -7520,8 +6232,8 @@
     static isBuffered(media, position) {
       if (media) {
         const buffered = _BufferHelper.getBuffered(media);
-        for (let i = buffered.length; i--; ) {
-          if (position >= buffered.start(i) && position <= buffered.end(i)) {
+        for (let i2 = buffered.length; i2--; ) {
+          if (position >= buffered.start(i2) && position <= buffered.end(i2)) {
             return true;
           }
         }
@@ -7537,10 +6249,10 @@
     }
     static timeRangesToArray(timeRanges) {
       const buffered = [];
-      for (let i = 0; i < timeRanges.length; i++) {
+      for (let i2 = 0; i2 < timeRanges.length; i2++) {
         buffered.push({
-          start: timeRanges.start(i),
-          end: timeRanges.end(i)
+          start: timeRanges.start(i2),
+          end: timeRanges.end(i2)
         });
       }
       return buffered;
@@ -7567,22 +6279,22 @@
       let bufferedIndex = -1;
       let buffered2 = [];
       if (maxHoleDuration) {
-        for (let i = 0; i < buffered.length; i++) {
-          if (pos >= buffered[i].start && pos <= buffered[i].end) {
-            bufferedIndex = i;
+        for (let i2 = 0; i2 < buffered.length; i2++) {
+          if (pos >= buffered[i2].start && pos <= buffered[i2].end) {
+            bufferedIndex = i2;
           }
           const buf2len = buffered2.length;
           if (buf2len) {
             const buf2end = buffered2[buf2len - 1].end;
-            if (buffered[i].start - buf2end < maxHoleDuration) {
-              if (buffered[i].end > buf2end) {
-                buffered2[buf2len - 1].end = buffered[i].end;
+            if (buffered[i2].start - buf2end < maxHoleDuration) {
+              if (buffered[i2].end > buf2end) {
+                buffered2[buf2len - 1].end = buffered[i2].end;
               }
             } else {
-              buffered2.push(buffered[i]);
+              buffered2.push(buffered[i2]);
             }
           } else {
-            buffered2.push(buffered[i]);
+            buffered2.push(buffered[i2]);
           }
         }
       } else {
@@ -7592,11 +6304,11 @@
       let nextStart;
       let bufferStart = pos;
       let bufferEnd = pos;
-      for (let i = 0; i < buffered2.length; i++) {
-        const start = buffered2[i].start;
-        const end = buffered2[i].end;
+      for (let i2 = 0; i2 < buffered2.length; i2++) {
+        const start = buffered2[i2].start;
+        const end = buffered2[i2].end;
         if (bufferedIndex === -1 && pos >= start && pos <= end) {
-          bufferedIndex = i;
+          bufferedIndex = i2;
         }
         if (pos + maxHoleDuration >= start && pos < end) {
           bufferStart = start;
@@ -7713,8 +6425,8 @@
         let stringValue = (this[attrName] || "0x").slice(2);
         stringValue = (stringValue.length & 1 ? "0" : "") + stringValue;
         const value = new Uint8Array(stringValue.length / 2);
-        for (let i = 0; i < stringValue.length / 2; i++) {
-          value[i] = parseInt(stringValue.slice(i * 2, i * 2 + 2), 16);
+        for (let i2 = 0; i2 < stringValue.length / 2; i2++) {
+          value[i2] = parseInt(stringValue.slice(i2 * 2, i2 * 2 + 2), 16);
         }
         return value;
       }
@@ -8082,9 +6794,9 @@
       if (partList) {
         const lastIndex = this.lastPartIndex;
         if (lastIndex !== -1) {
-          for (let i = partList.length; i--; ) {
-            if (partList[i].index > lastIndex) {
-              return partList[i].index;
+          for (let i2 = partList.length; i2--; ) {
+            if (partList[i2].index > lastIndex) {
+              return partList[i2].index;
             }
           }
           return lastIndex;
@@ -8109,7 +6821,7 @@
   };
   function arrayValuesMatch(a, b) {
     if (a.length === b.length) {
-      return !a.some((value, i) => value !== b[i]);
+      return !a.some((value, i2) => value !== b[i2]);
     }
     return false;
   }
@@ -8447,8 +7159,8 @@
   }
   function createInitializationVector(segmentNumber) {
     const uint8View = new Uint8Array(16);
-    for (let i = 12; i < 16; i++) {
-      uint8View[i] = segmentNumber >> 8 * (15 - i) & 255;
+    for (let i2 = 12; i2 < 16; i2++) {
+      uint8View[i2] = segmentNumber >> 8 * (15 - i2) & 255;
     }
     return uint8View;
   }
@@ -8466,8 +7178,8 @@
   var LEVEL_PLAYLIST_REGEX_SLOW = new RegExp([/#EXT-X-(PROGRAM-DATE-TIME|BYTERANGE|DATERANGE|DEFINE|KEY|MAP|PART|PART-INF|PLAYLIST-TYPE|PRELOAD-HINT|RENDITION-REPORT|SERVER-CONTROL|SKIP|START):(.+)/.source, /#EXT-X-(BITRATE|DISCONTINUITY-SEQUENCE|MEDIA-SEQUENCE|TARGETDURATION|VERSION): *(\d+)/.source, /#EXT-X-(DISCONTINUITY|ENDLIST|GAP|INDEPENDENT-SEGMENTS)/.source, /(#)([^:]*):(.*)/.source, /(#)(.*)(?:.*)\r?\n?/.source].join("|"));
   var M3U8Parser = class _M3U8Parser {
     static findGroup(groups, mediaGroupId) {
-      for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
+      for (let i2 = 0; i2 < groups.length; i2++) {
+        const group = groups[i2];
         if (group.id === mediaGroupId) {
           return group;
         }
@@ -8663,7 +7375,7 @@
       let prevFrag = null;
       let frag = new Fragment(type, base);
       let result;
-      let i;
+      let i2;
       let levelkeys;
       let firstPdtIndex = -1;
       let createNextFrag = false;
@@ -8732,14 +7444,14 @@
             logger.warn("No matches on slow regex match for level playlist!");
             continue;
           }
-          for (i = 1; i < result.length; i++) {
-            if (result[i] !== void 0) {
+          for (i2 = 1; i2 < result.length; i2++) {
+            if (result[i2] !== void 0) {
               break;
             }
           }
-          const tag = (" " + result[i]).slice(1);
-          const value1 = (" " + result[i + 1]).slice(1);
-          const value2 = result[i + 2] ? (" " + result[i + 2]).slice(1) : null;
+          const tag = (" " + result[i2]).slice(1);
+          const value1 = (" " + result[i2 + 1]).slice(1);
+          const value2 = result[i2 + 2] ? (" " + result[i2 + 2]).slice(1) : null;
           switch (tag) {
             case "BYTERANGE":
               if (prevFrag) {
@@ -8937,9 +7649,9 @@
                 partList = level.partList = [];
               }
               const previousFragmentPart = currentPart > 0 ? partList[partList.length - 1] : void 0;
-              const index2 = currentPart++;
+              const index = currentPart++;
               const partAttrs = new AttrList(value1, level);
-              const part = new Part(partAttrs, frag, base, index2, previousFragmentPart);
+              const part = new Part(partAttrs, frag, base, index, previousFragmentPart);
               partList.push(part);
               frag.duration += part.duration;
               break;
@@ -9021,8 +7733,8 @@
     const lastProgramDateTime = programDateTimes[programDateTimeCount - 1];
     const playlistEnd = details.live ? Infinity : details.totalduration;
     const dateRangeIds = Object.keys(details.dateRanges);
-    for (let i = dateRangeIds.length; i--; ) {
-      const dateRange = details.dateRanges[dateRangeIds[i]];
+    for (let i2 = dateRangeIds.length; i2--; ) {
+      const dateRange = details.dateRanges[dateRangeIds[i2]];
       const startDateTime = dateRange.startDate.getTime();
       dateRange.tagAnchor = lastProgramDateTime.ref;
       for (let j = programDateTimeCount; j--; ) {
@@ -9038,26 +7750,26 @@
       }
     }
   }
-  function findFragmentWithStartDate(details, startDateTime, programDateTimes, index2, endTime) {
-    const pdtFragment = programDateTimes[index2];
+  function findFragmentWithStartDate(details, startDateTime, programDateTimes, index, endTime) {
+    const pdtFragment = programDateTimes[index];
     if (pdtFragment) {
       const pdtStart = pdtFragment.programDateTime;
-      if (startDateTime >= pdtStart || index2 === 0) {
+      if (startDateTime >= pdtStart || index === 0) {
         var _programDateTimes;
-        const durationBetweenPdt = (((_programDateTimes = programDateTimes[index2 + 1]) == null ? void 0 : _programDateTimes.start) || endTime) - pdtFragment.start;
+        const durationBetweenPdt = (((_programDateTimes = programDateTimes[index + 1]) == null ? void 0 : _programDateTimes.start) || endTime) - pdtFragment.start;
         if (startDateTime <= pdtStart + durationBetweenPdt * 1e3) {
-          const startIndex = programDateTimes[index2].sn - details.startSN;
+          const startIndex = programDateTimes[index].sn - details.startSN;
           if (startIndex < 0) {
             return -1;
           }
           const fragments = details.fragments;
           if (fragments.length > programDateTimes.length) {
-            const endSegment = programDateTimes[index2 + 1] || fragments[fragments.length - 1];
+            const endSegment = programDateTimes[index + 1] || fragments[fragments.length - 1];
             const endIndex = endSegment.sn - details.startSN;
-            for (let i = endIndex; i > startIndex; i--) {
-              const fragStartDateTime = fragments[i].programDateTime;
-              if (startDateTime >= fragStartDateTime && startDateTime < fragStartDateTime + fragments[i].duration * 1e3) {
-                return i;
+            for (let i2 = endIndex; i2 > startIndex; i2--) {
+              const fragStartDateTime = fragments[i2].programDateTime;
+              if (startDateTime >= fragStartDateTime && startDateTime < fragStartDateTime + fragments[i2].duration * 1e3) {
+                return i2;
               }
             }
           }
@@ -9109,8 +7821,8 @@
   }
   function backfillProgramDateTimes(fragments, firstPdtIndex) {
     let fragPrev = fragments[firstPdtIndex];
-    for (let i = firstPdtIndex; i--; ) {
-      const frag = fragments[i];
+    for (let i2 = firstPdtIndex; i2--; ) {
+      const frag = fragments[i2];
       if (!frag) {
         return;
       }
@@ -9220,15 +7932,15 @@
     if (!details || sn < details.startSN || sn > details.endSN) {
       return 0;
     }
-    let i;
+    let i2;
     const fragIdx = sn - details.startSN;
     const fragments = details.fragments;
     fragments[fragIdx] = frag;
-    for (i = fragIdx; i > 0; i--) {
-      updateFromToPTS(fragments[i], fragments[i - 1]);
+    for (i2 = fragIdx; i2 > 0; i2--) {
+      updateFromToPTS(fragments[i2], fragments[i2 - 1]);
     }
-    for (i = fragIdx; i < fragments.length - 1; i++) {
-      updateFromToPTS(fragments[i], fragments[i + 1]);
+    for (i2 = fragIdx; i2 < fragments.length - 1; i2++) {
+      updateFromToPTS(fragments[i2], fragments[i2 + 1]);
     }
     if (details.fragmentHint) {
       updateFromToPTS(fragments[fragments.length - 1], details.fragmentHint);
@@ -9242,8 +7954,8 @@
     }
     let currentInitSegment = null;
     const oldFragments = oldDetails.fragments;
-    for (let i = oldFragments.length - 1; i >= 0; i--) {
-      const oldInit = oldFragments[i].initSegment;
+    for (let i2 = oldFragments.length - 1; i2 >= 0; i2--) {
+      const oldInit = oldFragments[i2].initSegment;
       if (oldInit) {
         currentInitSegment = oldInit;
         break;
@@ -9256,8 +7968,8 @@
     mapFragmentIntersection(oldDetails, newDetails, (oldFrag, newFrag, newFragIndex, newFragments2) => {
       if ((!newDetails.startCC || newDetails.skippedSegments) && newFrag.cc !== oldFrag.cc) {
         const ccOffset = oldFrag.cc - newFrag.cc;
-        for (let i = newFragIndex; i < newFragments2.length; i++) {
-          newFragments2[i].cc += ccOffset;
+        for (let i2 = newFragIndex; i2 < newFragments2.length; i2++) {
+          newFragments2[i2].cc += ccOffset;
         }
         newDetails.endCC = newFragments2[newFragments2.length - 1].cc;
       }
@@ -9300,7 +8012,7 @@
       newDetails.deltaUpdateFailed = newFragments.some((frag) => !frag);
       if (newDetails.deltaUpdateFailed) {
         logger2.warn("[level-helper] Previous playlist missing segments skipped in delta playlist");
-        for (let i = newDetails.skippedSegments; i--; ) {
+        for (let i2 = newDetails.skippedSegments; i2--; ) {
           newFragments.shift();
         }
         newDetails.startSN = newFragments[0].sn;
@@ -9310,9 +8022,9 @@
         }
         const programDateTimes = oldDetails.fragments.filter((frag) => frag.rawProgramDateTime);
         if (oldDetails.hasProgramDateTime && !newDetails.hasProgramDateTime) {
-          for (let i = 1; i < fragmentsToCheck.length; i++) {
-            if (fragmentsToCheck[i].programDateTime === null) {
-              assignProgramDateTime(fragmentsToCheck[i], fragmentsToCheck[i - 1], programDateTimes);
+          for (let i2 = 1; i2 < fragmentsToCheck.length; i2++) {
+            if (fragmentsToCheck[i2].programDateTime === null) {
+              assignProgramDateTime(fragmentsToCheck[i2], fragmentsToCheck[i2 - 1], programDateTimes);
             }
           }
         }
@@ -9390,9 +8102,9 @@
   function mapPartIntersection(oldParts, newParts, intersectionFn) {
     if (oldParts && newParts) {
       let delta = 0;
-      for (let i = 0, len = oldParts.length; i <= len; i++) {
-        const oldPart = oldParts[i];
-        const newPart = newParts[i + delta];
+      for (let i2 = 0, len = oldParts.length; i2 <= len; i2++) {
+        const oldPart = oldParts[i2];
+        const newPart = newParts[i2 + delta];
         if (oldPart && newPart && oldPart.index === newPart.index && oldPart.fragment.sn === newPart.fragment.sn) {
           intersectionFn(oldPart, newPart);
         } else {
@@ -9408,14 +8120,14 @@
     const delta = newDetails.startSN - oldDetails.startSN;
     const newFrags = newDetails.fragmentHint ? newDetails.fragments.concat(newDetails.fragmentHint) : newDetails.fragments;
     const oldFrags = oldDetails.fragmentHint ? oldDetails.fragments.concat(oldDetails.fragmentHint) : oldDetails.fragments;
-    for (let i = start; i <= end; i++) {
-      const oldFrag = oldFrags[delta + i];
-      let newFrag = newFrags[i];
+    for (let i2 = start; i2 <= end; i2++) {
+      const oldFrag = oldFrags[delta + i2];
+      let newFrag = newFrags[i2];
       if (skippedSegments && !newFrag && oldFrag) {
-        newFrag = newDetails.fragments[i] = oldFrag;
+        newFrag = newDetails.fragments[i2] = oldFrag;
       }
       if (oldFrag && newFrag) {
-        intersectionFn(oldFrag, newFrag, i, newFrags);
+        intersectionFn(oldFrag, newFrag, i2, newFrags);
         const uriBefore = oldFrag.relurl;
         const uriAfter = newFrag.relurl;
         if (uriBefore && notEqualAfterStrippingQueries(uriBefore, uriAfter)) {
@@ -9457,8 +8169,8 @@ ${newDetails.m3u8}`);
   function addSliding(details, sliding) {
     if (sliding) {
       const fragments = details.fragments;
-      for (let i = details.skippedSegments; i < fragments.length; i++) {
-        fragments[i].addStart(sliding);
+      for (let i2 = details.skippedSegments; i2 < fragments.length; i2++) {
+        fragments[i2].addStart(sliding);
       }
       if (details.fragmentHint) {
         details.fragmentHint.addStart(sliding);
@@ -9506,8 +8218,8 @@ ${newDetails.m3u8}`);
   }
   function findPart(partList, sn, partIndex) {
     if (partList) {
-      for (let i = partList.length; i--; ) {
-        const part = partList[i];
+      for (let i2 = partList.length; i2--; ) {
+        const part = partList[i2];
         if (part.index === partIndex && part.fragment.sn === sn) {
           return part;
         }
@@ -9516,12 +8228,12 @@ ${newDetails.m3u8}`);
     return null;
   }
   function reassignFragmentLevelIndexes(levels) {
-    levels.forEach((level, index2) => {
+    levels.forEach((level, index) => {
       var _level$details;
       (_level$details = level.details) == null || _level$details.fragments.forEach((fragment) => {
-        fragment.level = index2;
+        fragment.level = index;
         if (fragment.initSegment) {
-          fragment.initSegment.level = index2;
+          fragment.initSegment.level = index;
         }
       });
     });
@@ -9536,10 +8248,10 @@ ${newDetails.m3u8}`);
     return uri.replace(/\?[^?]*$/, "");
   }
   function findFirstFragWithCC(fragments, cc) {
-    for (let i = 0, len = fragments.length; i < len; i++) {
+    for (let i2 = 0, len = fragments.length; i2 < len; i2++) {
       var _fragments$i;
-      if (((_fragments$i = fragments[i]) == null ? void 0 : _fragments$i.cc) === cc) {
-        return fragments[i];
+      if (((_fragments$i = fragments[i2]) == null ? void 0 : _fragments$i.cc) === cc) {
+        return fragments[i2];
       }
     }
     return null;
@@ -9560,8 +8272,8 @@ ${newDetails.m3u8}`);
   }
   function adjustSlidingStart(sliding, details) {
     const fragments = details.fragments;
-    for (let i = 0, len = fragments.length; i < len; i++) {
-      adjustFragmentStart(fragments[i], sliding);
+    for (let i2 = 0, len = fragments.length; i2 < len; i2++) {
+      adjustFragmentStart(fragments[i2], sliding);
     }
     if (details.fragmentHint) {
       adjustFragmentStart(details.fragmentHint, sliding);
@@ -9633,8 +8345,8 @@ ${newDetails.m3u8}`);
     toString: function(r) {
       let log = "";
       const len = r.length;
-      for (let i = 0; i < len; i++) {
-        log += `[${r.start(i).toFixed(3)}-${r.end(i).toFixed(3)}]`;
+      for (let i2 = 0; i2 < len; i2++) {
+        log += `[${r.start(i2).toFixed(3)}-${r.end(i2).toFixed(3)}]`;
       }
       return log;
     }
@@ -10618,8 +9330,8 @@ ${newDetails.m3u8}`);
         }
         const playerQueue = interstitials == null ? void 0 : interstitials.playerQueue;
         if (playerQueue) {
-          for (let i = playerQueue.length; i--; ) {
-            const interstitial = playerQueue[i].interstitial;
+          for (let i2 = playerQueue.length; i2--; ) {
+            const interstitial = playerQueue[i2].interstitial;
             if (interstitial.appendInPlace && frag.start >= interstitial.startTime && frag.end <= interstitial.resumeTime) {
               return null;
             }
@@ -10638,8 +9350,8 @@ ${newDetails.m3u8}`);
       let nextPart = -1;
       let contiguous = false;
       let independentAttrOmitted = true;
-      for (let i = 0, len = partList.length; i < len; i++) {
-        const part = partList[i];
+      for (let i2 = 0, len = partList.length; i2 < len; i2++) {
+        const part = partList[i2];
         independentAttrOmitted = independentAttrOmitted && !part.independent;
         if (nextPart > -1 && targetBufferTime < part.start) {
           break;
@@ -10651,7 +9363,7 @@ ${newDetails.m3u8}`);
           if (part.fragment !== frag) {
             this.warn(`Need buffer at ${targetBufferTime} but next unloaded part starts at ${part.start}`);
           }
-          nextPart = i;
+          nextPart = i2;
         }
         contiguous = loaded;
       }
@@ -10659,8 +9371,8 @@ ${newDetails.m3u8}`);
     }
     loadedEndOfParts(partList, targetBufferTime) {
       let part;
-      for (let i = partList.length; i--; ) {
-        part = partList[i];
+      for (let i2 = partList.length; i2--; ) {
+        part = partList[i2];
         if (!part.loaded) {
           return false;
         }
@@ -11131,8 +9843,8 @@ ${newDetails.m3u8}`);
   function concatUint8Arrays(chunks, dataLength) {
     const result = new Uint8Array(dataLength);
     let offset = 0;
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+    for (let i2 = 0; i2 < chunks.length; i2++) {
+      const chunk = chunks[i2];
       result.set(chunk, offset);
       offset += chunk.length;
     }
@@ -11189,8 +9901,8 @@ ${newDetails.m3u8}`);
         var evt = prefix ? prefix + event : event, handlers = this._events[evt];
         if (!handlers) return [];
         if (handlers.fn) return [handlers.fn];
-        for (var i = 0, l = handlers.length, ee = new Array(l); i < l; i++) {
-          ee[i] = handlers[i].fn;
+        for (var i2 = 0, l = handlers.length, ee = new Array(l); i2 < l; i2++) {
+          ee[i2] = handlers[i2].fn;
         }
         return ee;
       };
@@ -11203,7 +9915,7 @@ ${newDetails.m3u8}`);
       EventEmitter2.prototype.emit = function emit(event, a1, a2, a3, a4, a5) {
         var evt = prefix ? prefix + event : event;
         if (!this._events[evt]) return false;
-        var listeners = this._events[evt], len = arguments.length, args, i;
+        var listeners = this._events[evt], len = arguments.length, args, i2;
         if (listeners.fn) {
           if (listeners.once) this.removeListener(event, listeners.fn, void 0, true);
           switch (len) {
@@ -11220,32 +9932,32 @@ ${newDetails.m3u8}`);
             case 6:
               return listeners.fn.call(listeners.context, a1, a2, a3, a4, a5), true;
           }
-          for (i = 1, args = new Array(len - 1); i < len; i++) {
-            args[i - 1] = arguments[i];
+          for (i2 = 1, args = new Array(len - 1); i2 < len; i2++) {
+            args[i2 - 1] = arguments[i2];
           }
           listeners.fn.apply(listeners.context, args);
         } else {
           var length = listeners.length, j;
-          for (i = 0; i < length; i++) {
-            if (listeners[i].once) this.removeListener(event, listeners[i].fn, void 0, true);
+          for (i2 = 0; i2 < length; i2++) {
+            if (listeners[i2].once) this.removeListener(event, listeners[i2].fn, void 0, true);
             switch (len) {
               case 1:
-                listeners[i].fn.call(listeners[i].context);
+                listeners[i2].fn.call(listeners[i2].context);
                 break;
               case 2:
-                listeners[i].fn.call(listeners[i].context, a1);
+                listeners[i2].fn.call(listeners[i2].context, a1);
                 break;
               case 3:
-                listeners[i].fn.call(listeners[i].context, a1, a2);
+                listeners[i2].fn.call(listeners[i2].context, a1, a2);
                 break;
               case 4:
-                listeners[i].fn.call(listeners[i].context, a1, a2, a3);
+                listeners[i2].fn.call(listeners[i2].context, a1, a2, a3);
                 break;
               default:
                 if (!args) for (j = 1, args = new Array(len - 1); j < len; j++) {
                   args[j - 1] = arguments[j];
                 }
-                listeners[i].fn.apply(listeners[i].context, args);
+                listeners[i2].fn.apply(listeners[i2].context, args);
             }
           }
         }
@@ -11270,9 +9982,9 @@ ${newDetails.m3u8}`);
             clearEvent(this, evt);
           }
         } else {
-          for (var i = 0, events = [], length = listeners.length; i < length; i++) {
-            if (listeners[i].fn !== fn || once && !listeners[i].once || context && listeners[i].context !== context) {
-              events.push(listeners[i]);
+          for (var i2 = 0, events = [], length = listeners.length; i2 < length; i2++) {
+            if (listeners[i2].fn !== fn || once && !listeners[i2].once || context && listeners[i2].context !== context) {
+              events.push(listeners[i2]);
             }
           }
           if (events.length) this._events[evt] = events.length === 1 ? events[0] : events;
@@ -11303,13 +10015,13 @@ ${newDetails.m3u8}`);
   }
   var eventemitter3Exports = requireEventemitter3();
   var EventEmitter = /* @__PURE__ */ getDefaultExportFromCjs(eventemitter3Exports);
-  var version2 = "1.6.15";
+  var version = "1.6.15";
   var workerStore = {};
   function hasUMDWorker() {
     return typeof __HLS_WORKER_BUNDLE__ === "function";
   }
   function injectWorker() {
-    const workerContext = workerStore[version2];
+    const workerContext = workerStore[version];
     if (workerContext) {
       workerContext.clientCount++;
       return workerContext;
@@ -11324,7 +10036,7 @@ ${newDetails.m3u8}`);
       objectURL,
       clientCount: 1
     };
-    workerStore[version2] = result;
+    workerStore[version] = result;
     return result;
   }
   function loadWorker(path) {
@@ -11344,7 +10056,7 @@ ${newDetails.m3u8}`);
     return result;
   }
   function removeWorkerFromStore(path) {
-    const workerContext = workerStore[path || version2];
+    const workerContext = workerStore[path || version];
     if (workerContext) {
       const clientCount = workerContext.clientCount--;
       if (clientCount === 1) {
@@ -11352,7 +10064,7 @@ ${newDetails.m3u8}`);
           worker,
           objectURL
         } = workerContext;
-        delete workerStore[path || version2];
+        delete workerStore[path || version];
         if (objectURL) {
           self.URL.revokeObjectURL(objectURL);
         }
@@ -11639,10 +10351,10 @@ ${newDetails.m3u8}`);
       return void 0;
     }
     if (frame.type === "TXXX") {
-      let index2 = 1;
-      const description = utf8ArrayToStr(frame.data.subarray(index2), true);
-      index2 += description.length + 1;
-      const value = utf8ArrayToStr(frame.data.subarray(index2));
+      let index = 1;
+      const description = utf8ArrayToStr(frame.data.subarray(index), true);
+      index += description.length + 1;
+      const value = utf8ArrayToStr(frame.data.subarray(index));
       return {
         key: frame.type,
         info: description,
@@ -11661,10 +10373,10 @@ ${newDetails.m3u8}`);
       if (frame.size < 2) {
         return void 0;
       }
-      let index2 = 1;
-      const description = utf8ArrayToStr(frame.data.subarray(index2), true);
-      index2 += description.length + 1;
-      const value = utf8ArrayToStr(frame.data.subarray(index2));
+      let index = 1;
+      const description = utf8ArrayToStr(frame.data.subarray(index), true);
+      index += description.length + 1;
+      const value = utf8ArrayToStr(frame.data.subarray(index));
       return {
         key: frame.type,
         info: description,
@@ -11742,8 +10454,8 @@ ${newDetails.m3u8}`);
   }
   function getId3Timestamp(data) {
     const frames = getId3Frames(data);
-    for (let i = 0; i < frames.length; i++) {
-      const frame = frames[i];
+    for (let i2 = 0; i2 < frames.length; i2++) {
+      const frame = frames[i2];
       if (isId3TimestampFrame(frame)) {
         return readId3Timestamp(frame);
       }
@@ -12550,7 +11262,7 @@ ${newDetails.m3u8}`);
       let state = track.naluState || 0;
       const lastState = state;
       const units = [];
-      let i = 0;
+      let i2 = 0;
       let value;
       let overflow;
       let unitType;
@@ -12560,10 +11272,10 @@ ${newDetails.m3u8}`);
         lastUnitStart = 0;
         lastUnitType = this.getNALuType(array, 0);
         state = 0;
-        i = 1;
+        i2 = 1;
       }
-      while (i < len) {
-        value = array[i++];
+      while (i2 < len) {
+        value = array[i2++];
         if (!state) {
           state = value ? 0 : 1;
           continue;
@@ -12575,7 +11287,7 @@ ${newDetails.m3u8}`);
         if (!value) {
           state = 3;
         } else if (value === 1) {
-          overflow = i - state - 1;
+          overflow = i2 - state - 1;
           if (lastUnitStart >= 0) {
             const unit = {
               data: array.subarray(lastUnitStart, overflow),
@@ -12585,7 +11297,7 @@ ${newDetails.m3u8}`);
           } else {
             const lastUnit = this.getLastNalUnit(track.samples);
             if (lastUnit) {
-              if (lastState && i <= 4 - lastState) {
+              if (lastState && i2 <= 4 - lastState) {
                 if (lastUnit.state) {
                   lastUnit.data = lastUnit.data.subarray(0, lastUnit.data.byteLength - lastState);
                 }
@@ -12596,9 +11308,9 @@ ${newDetails.m3u8}`);
               }
             }
           }
-          if (i < len) {
-            unitType = this.getNALuType(array, i);
-            lastUnitStart = i;
+          if (i2 < len) {
+            unitType = this.getNALuType(array, i2);
+            lastUnitStart = i2;
             lastUnitType = unitType;
             state = 0;
           } else {
@@ -12814,8 +11526,8 @@ ${newDetails.m3u8}`);
               track.sps = [sps];
               const codecarray = sps.subarray(1, 4);
               let codecstring = "avc1.";
-              for (let i = 0; i < 3; i++) {
-                let h = codecarray[i].toString(16);
+              for (let i2 = 0; i2 < 3; i2++) {
+                let h = codecarray[i2].toString(16);
                 if (h.length < 2) {
                   h = "0" + h;
                 }
@@ -12903,7 +11615,7 @@ ${newDetails.m3u8}`);
       let frameCropBottomOffset = 0;
       let numRefFramesInPicOrderCntCycle;
       let scalingListCount;
-      let i;
+      let i2;
       const readUByte = eg.readUByte.bind(eg);
       const readBits = eg.readBits.bind(eg);
       const readUEG = eg.readUEG.bind(eg);
@@ -12928,9 +11640,9 @@ ${newDetails.m3u8}`);
         skipBits(1);
         if (readBoolean()) {
           scalingListCount = chromaFormatIdc !== 3 ? 8 : 12;
-          for (i = 0; i < scalingListCount; i++) {
+          for (i2 = 0; i2 < scalingListCount; i2++) {
             if (readBoolean()) {
-              if (i < 6) {
+              if (i2 < 6) {
                 skipScalingList(16, eg);
               } else {
                 skipScalingList(64, eg);
@@ -12948,7 +11660,7 @@ ${newDetails.m3u8}`);
         skipEG();
         skipEG();
         numRefFramesInPicOrderCntCycle = readUEG();
-        for (i = 0; i < numRefFramesInPicOrderCntCycle; i++) {
+        for (i2 = 0; i2 < numRefFramesInPicOrderCntCycle; i2++) {
           skipEG();
         }
       }
@@ -13204,13 +11916,13 @@ ${newDetails.m3u8}`);
     ebsp2rbsp(arr) {
       const dst = new Uint8Array(arr.byteLength);
       let dstIdx = 0;
-      for (let i = 0; i < arr.byteLength; i++) {
-        if (i >= 2) {
-          if (arr[i] === 3 && arr[i - 1] === 0 && arr[i - 2] === 0) {
+      for (let i2 = 0; i2 < arr.byteLength; i2++) {
+        if (i2 >= 2) {
+          if (arr[i2] === 3 && arr[i2 - 1] === 0 && arr[i2 - 2] === 0) {
             continue;
           }
         }
-        dst[dstIdx] = arr[i];
+        dst[dstIdx] = arr[i2];
         dstIdx++;
       }
       return new Uint8Array(dst.buffer, 0, dstIdx);
@@ -13258,17 +11970,17 @@ ${newDetails.m3u8}`);
       const general_level_idc = eg.readUByte();
       const sub_layer_profile_present_flags = [];
       const sub_layer_level_present_flags = [];
-      for (let i = 0; i < max_sub_layers_minus1; i++) {
+      for (let i2 = 0; i2 < max_sub_layers_minus1; i2++) {
         sub_layer_profile_present_flags.push(eg.readBoolean());
         sub_layer_level_present_flags.push(eg.readBoolean());
       }
       if (max_sub_layers_minus1 > 0) {
-        for (let i = max_sub_layers_minus1; i < 8; i++) {
+        for (let i2 = max_sub_layers_minus1; i2 < 8; i2++) {
           eg.readBits(2);
         }
       }
-      for (let i = 0; i < max_sub_layers_minus1; i++) {
-        if (sub_layer_profile_present_flags[i]) {
+      for (let i2 = 0; i2 < max_sub_layers_minus1; i2++) {
+        if (sub_layer_profile_present_flags[i2]) {
           eg.readUByte();
           eg.readUByte();
           eg.readUByte();
@@ -13281,7 +11993,7 @@ ${newDetails.m3u8}`);
           eg.readUByte();
           eg.readUByte();
         }
-        if (sub_layer_level_present_flags[i]) {
+        if (sub_layer_level_present_flags[i2]) {
           eg.readUByte();
         }
       }
@@ -13304,7 +12016,7 @@ ${newDetails.m3u8}`);
       const bit_depth_chroma_minus8 = eg.readUEG();
       const log2_max_pic_order_cnt_lsb_minus4 = eg.readUEG();
       const sub_layer_ordering_info_present_flag = eg.readBoolean();
-      for (let i = sub_layer_ordering_info_present_flag ? 0 : max_sub_layers_minus1; i <= max_sub_layers_minus1; i++) {
+      for (let i2 = sub_layer_ordering_info_present_flag ? 0 : max_sub_layers_minus1; i2 <= max_sub_layers_minus1; i2++) {
         eg.skipUEG();
         eg.skipUEG();
         eg.skipUEG();
@@ -13329,7 +12041,7 @@ ${newDetails.m3u8}`);
                 if (sizeId > 1) {
                   eg.readEG();
                 }
-                for (let i = 0; i < coefNum; i++) {
+                for (let i2 = 0; i2 < coefNum; i2++) {
                   eg.readEG();
                 }
               }
@@ -13348,13 +12060,13 @@ ${newDetails.m3u8}`);
       }
       const num_short_term_ref_pic_sets = eg.readUEG();
       let num_delta_pocs = 0;
-      for (let i = 0; i < num_short_term_ref_pic_sets; i++) {
+      for (let i2 = 0; i2 < num_short_term_ref_pic_sets; i2++) {
         let inter_ref_pic_set_prediction_flag = false;
-        if (i !== 0) {
+        if (i2 !== 0) {
           inter_ref_pic_set_prediction_flag = eg.readBoolean();
         }
         if (inter_ref_pic_set_prediction_flag) {
-          if (i === num_short_term_ref_pic_sets) {
+          if (i2 === num_short_term_ref_pic_sets) {
             eg.readUEG();
           }
           eg.readBoolean();
@@ -13388,7 +12100,7 @@ ${newDetails.m3u8}`);
       const long_term_ref_pics_present_flag = eg.readBoolean();
       if (long_term_ref_pics_present_flag) {
         const num_long_term_ref_pics_sps = eg.readUEG();
-        for (let i = 0; i < num_long_term_ref_pics_sps; i++) {
+        for (let i2 = 0; i2 < num_long_term_ref_pics_sps; i2++) {
           for (let j = 0; j < log2_max_pic_order_cnt_lsb_minus4 + 4; j++) {
             eg.readBits(1);
           }
@@ -13476,7 +12188,7 @@ ${newDetails.m3u8}`);
               eg.readBits(5);
               eg.readBits(5);
             }
-            for (let i = 0; i <= max_sub_layers_minus1; i++) {
+            for (let i2 = 0; i2 <= max_sub_layers_minus1; i2++) {
               fps_fixed = eg.readBoolean();
               const fixed_pic_rate_within_cvs_flag = fps_fixed || eg.readBoolean();
               let low_delay_hrd_flag = false;
@@ -13533,8 +12245,8 @@ ${newDetails.m3u8}`);
       const profile_space_string = general_profile_space ? ["A", "B", "C"][general_profile_space] : "";
       const profile_compatibility_buf = general_profile_compatibility_flags_1 << 24 | general_profile_compatibility_flags_2 << 16 | general_profile_compatibility_flags_3 << 8 | general_profile_compatibility_flags_4;
       let profile_compatibility_rev = 0;
-      for (let i = 0; i < 32; i++) {
-        profile_compatibility_rev = (profile_compatibility_rev | (profile_compatibility_buf >> i & 1) << 31 - i) >>> 0;
+      for (let i2 = 0; i2 < 32; i2++) {
+        profile_compatibility_rev = (profile_compatibility_rev | (profile_compatibility_buf >> i2 & 1) << 31 - i2) >>> 0;
       }
       let profile_compatibility_flags_string = profile_compatibility_rev.toString(16);
       if (general_profile_idc === 1 && profile_compatibility_flags_string === "2") {
@@ -13638,12 +12350,12 @@ ${newDetails.m3u8}`);
     static syncOffset(data) {
       const length = data.length;
       let scanwindow = Math.min(PACKET_LENGTH * 5, length - PACKET_LENGTH) + 1;
-      let i = 0;
-      while (i < scanwindow) {
+      let i2 = 0;
+      while (i2 < scanwindow) {
         let foundPat = false;
         let packetStart = -1;
         let tsPackets = 0;
-        for (let j = i; j < length; j += PACKET_LENGTH) {
+        for (let j = i2; j < length; j += PACKET_LENGTH) {
           if (data[j] === 71 && (length - j === PACKET_LENGTH || data[j + PACKET_LENGTH] === 71)) {
             tsPackets++;
             if (packetStart === -1) {
@@ -13664,7 +12376,7 @@ ${newDetails.m3u8}`);
             break;
           }
         }
-        i++;
+        i2++;
       }
       return -1;
     }
@@ -14268,7 +12980,7 @@ ${newDetails.m3u8}`);
     logger2.log(`${type} with AES-128-CBC encryption found in unencrypted stream`);
   }
   function parsePES(stream, logger2) {
-    let i = 0;
+    let i2 = 0;
     let frag;
     let pesLen;
     let pesHdrLen;
@@ -14330,8 +13042,8 @@ ${newDetails.m3u8}`);
             payloadStartOffset = 0;
           }
         }
-        pesData.set(frag, i);
-        i += len;
+        pesData.set(frag, i2);
+        i2 += len;
       }
       if (pesLen) {
         pesLen -= pesHdrLen + 3;
@@ -14423,10 +13135,10 @@ ${newDetails.m3u8}`);
         vmhd: [],
         smhd: []
       };
-      let i;
-      for (i in _MP4.types) {
-        if (_MP4.types.hasOwnProperty(i)) {
-          _MP4.types[i] = [i.charCodeAt(0), i.charCodeAt(1), i.charCodeAt(2), i.charCodeAt(3)];
+      let i2;
+      for (i2 in _MP4.types) {
+        if (_MP4.types.hasOwnProperty(i2)) {
+          _MP4.types[i2] = [i2.charCodeAt(0), i2.charCodeAt(1), i2.charCodeAt(2), i2.charCodeAt(3)];
         }
       }
       const videoHdlr = new Uint8Array([
@@ -14640,10 +13352,10 @@ ${newDetails.m3u8}`);
     }
     static box(type, ...payload) {
       let size = 8;
-      let i = payload.length;
-      const len = i;
-      while (i--) {
-        size += payload[i].byteLength;
+      let i2 = payload.length;
+      const len = i2;
+      while (i2--) {
+        size += payload[i2].byteLength;
       }
       const result = new Uint8Array(size);
       result[0] = size >> 24 & 255;
@@ -14651,9 +13363,9 @@ ${newDetails.m3u8}`);
       result[2] = size >> 8 & 255;
       result[3] = size & 255;
       result.set(type, 4);
-      for (i = 0, size = 8; i < len; i++) {
-        result.set(payload[i], size);
-        size += payload[i].byteLength;
+      for (i2 = 0, size = 8; i2 < len; i2++) {
+        result.set(payload[i2], size);
+        size += payload[i2].byteLength;
       }
       return result;
     }
@@ -14740,18 +13452,18 @@ ${newDetails.m3u8}`);
       return _MP4.box(_MP4.types.moof, _MP4.mfhd(sn), _MP4.traf(track, baseMediaDecodeTime));
     }
     static moov(tracks) {
-      let i = tracks.length;
+      let i2 = tracks.length;
       const boxes = [];
-      while (i--) {
-        boxes[i] = _MP4.trak(tracks[i]);
+      while (i2--) {
+        boxes[i2] = _MP4.trak(tracks[i2]);
       }
       return _MP4.box.apply(null, [_MP4.types.moov, _MP4.mvhd(tracks[0].timescale || 0, tracks[0].duration || 0)].concat(boxes).concat(_MP4.mvex(tracks)));
     }
     static mvex(tracks) {
-      let i = tracks.length;
+      let i2 = tracks.length;
       const boxes = [];
-      while (i--) {
-        boxes[i] = _MP4.trex(tracks[i]);
+      while (i2--) {
+        boxes[i2] = _MP4.trex(tracks[i2]);
       }
       return _MP4.box.apply(null, [_MP4.types.mvex, ...boxes]);
     }
@@ -14891,11 +13603,11 @@ ${newDetails.m3u8}`);
     static sdtp(track) {
       const samples = track.samples || [];
       const bytes = new Uint8Array(4 + samples.length);
-      let i;
+      let i2;
       let flags;
-      for (i = 0; i < samples.length; i++) {
-        flags = samples[i].flags;
-        bytes[i + 4] = flags.dependsOn << 4 | flags.isDependedOn << 2 | flags.hasRedundancy;
+      for (i2 = 0; i2 < samples.length; i2++) {
+        flags = samples[i2].flags;
+        bytes[i2 + 4] = flags.dependsOn << 4 | flags.isDependedOn << 2 | flags.hasRedundancy;
       }
       return _MP4.box(_MP4.types.sdtp, bytes);
     }
@@ -14905,18 +13617,18 @@ ${newDetails.m3u8}`);
     static avc1(track) {
       let sps = [];
       let pps = [];
-      let i;
+      let i2;
       let data;
       let len;
-      for (i = 0; i < track.sps.length; i++) {
-        data = track.sps[i];
+      for (i2 = 0; i2 < track.sps.length; i2++) {
+        data = track.sps[i2];
         len = data.byteLength;
         sps.push(len >>> 8 & 255);
         sps.push(len & 255);
         sps = sps.concat(Array.prototype.slice.call(data));
       }
-      for (i = 0; i < track.pps.length; i++) {
-        data = track.pps[i];
+      for (i2 = 0; i2 < track.pps.length; i2++) {
+        data = track.pps[i2];
         len = data.byteLength;
         pps.push(len >>> 8 & 255);
         pps.push(len & 255);
@@ -15417,7 +14129,7 @@ ${newDetails.m3u8}`);
       const len = samples.length;
       const arraylen = 12 + 16 * len;
       const array = new Uint8Array(arraylen);
-      let i;
+      let i2;
       let sample;
       let duration;
       let size;
@@ -15442,8 +14154,8 @@ ${newDetails.m3u8}`);
         offset & 255
         // data_offset
       ], 0);
-      for (i = 0; i < len; i++) {
-        sample = samples[i];
+      for (i2 = 0; i2 < len; i2++) {
+        sample = samples[i2];
         duration = sample.duration;
         size = sample.size;
         flags = sample.flags;
@@ -15469,7 +14181,7 @@ ${newDetails.m3u8}`);
           cts >>> 8 & 255,
           cts & 255
           // sample_composition_time_offset
-        ], 12 + 16 * i);
+        ], 12 + 16 * i2);
       }
       return _MP4.box(_MP4.types.trun, array);
     }
@@ -15487,24 +14199,24 @@ ${newDetails.m3u8}`);
       const NALuLengthSize = 4;
       const config = new Uint8Array([1, ps.general_profile_space << 6 | (ps.general_tier_flag ? 32 : 0) | ps.general_profile_idc, ps.general_profile_compatibility_flags[0], ps.general_profile_compatibility_flags[1], ps.general_profile_compatibility_flags[2], ps.general_profile_compatibility_flags[3], ps.general_constraint_indicator_flags[0], ps.general_constraint_indicator_flags[1], ps.general_constraint_indicator_flags[2], ps.general_constraint_indicator_flags[3], ps.general_constraint_indicator_flags[4], ps.general_constraint_indicator_flags[5], ps.general_level_idc, 240 | ps.min_spatial_segmentation_idc >> 8, 255 & ps.min_spatial_segmentation_idc, 252 | ps.parallelismType, 252 | ps.chroma_format_idc, 248 | ps.bit_depth_luma_minus8, 248 | ps.bit_depth_chroma_minus8, 0, parseInt(ps.frame_rate.fps), NALuLengthSize - 1 | ps.temporal_id_nested << 2 | ps.num_temporal_layers << 3 | (ps.frame_rate.fixed ? 64 : 0), units.length]);
       let length = config.length;
-      for (let i = 0; i < units.length; i += 1) {
+      for (let i2 = 0; i2 < units.length; i2 += 1) {
         length += 3;
-        for (let j = 0; j < units[i].length; j += 1) {
-          length += 2 + units[i][j].length;
+        for (let j = 0; j < units[i2].length; j += 1) {
+          length += 2 + units[i2][j].length;
         }
       }
       const hvcC = new Uint8Array(length);
       hvcC.set(config, 0);
       length = config.length;
       const iMax = units.length - 1;
-      for (let i = 0; i < units.length; i += 1) {
-        hvcC.set(new Uint8Array([32 + i | (i === iMax ? 128 : 0), 0, units[i].length]), length);
+      for (let i2 = 0; i2 < units.length; i2 += 1) {
+        hvcC.set(new Uint8Array([32 + i2 | (i2 === iMax ? 128 : 0), 0, units[i2].length]), length);
         length += 3;
-        for (let j = 0; j < units[i].length; j += 1) {
-          hvcC.set(new Uint8Array([units[i][j].length >> 8, units[i][j].length & 255]), length);
+        for (let j = 0; j < units[i2].length; j += 1) {
+          hvcC.set(new Uint8Array([units[i2][j].length >> 8, units[i2][j].length & 255]), length);
           length += 2;
-          hvcC.set(units[i][j], length);
-          length += units[i][j].length;
+          hvcC.set(units[i2][j], length);
+          length += units[i2][j].length;
         }
       }
       const hvcc = _MP4.box(_MP4.types.hvcC, hvcC);
@@ -16007,11 +14719,11 @@ ${newDetails.m3u8}`);
         }
       }
       const nextVideoPts = nextVideoTs + initTime;
-      for (let i = 0; i < nbSamples; i++) {
-        const sample = inputSamples[i];
+      for (let i2 = 0; i2 < nbSamples; i2++) {
+        const sample = inputSamples[i2];
         sample.pts = normalizePts(sample.pts, nextVideoPts);
         sample.dts = normalizePts(sample.dts, nextVideoPts);
-        if (sample.dts < inputSamples[i > 0 ? i - 1 : i].dts) {
+        if (sample.dts < inputSamples[i2 > 0 ? i2 - 1 : i2].dts) {
           sortSamples = true;
         }
       }
@@ -16044,16 +14756,16 @@ ${newDetails.m3u8}`);
               inputSamples[0].pts = firstPTS;
             } else {
               let isPTSOrderRetained = true;
-              for (let i = 0; i < inputSamples.length; i++) {
-                if (inputSamples[i].dts > firstPTS && isPTSOrderRetained) {
+              for (let i2 = 0; i2 < inputSamples.length; i2++) {
+                if (inputSamples[i2].dts > firstPTS && isPTSOrderRetained) {
                   break;
                 }
-                const prevPTS = inputSamples[i].pts;
-                inputSamples[i].dts -= delta;
-                inputSamples[i].pts -= delta;
-                if (i < inputSamples.length - 1) {
-                  const nextSamplePTS = inputSamples[i + 1].pts;
-                  const currentSamplePTS = inputSamples[i].pts;
+                const prevPTS = inputSamples[i2].pts;
+                inputSamples[i2].dts -= delta;
+                inputSamples[i2].pts -= delta;
+                if (i2 < inputSamples.length - 1) {
+                  const nextSamplePTS = inputSamples[i2 + 1].pts;
+                  const currentSamplePTS = inputSamples[i2].pts;
                   const currentOrder = nextSamplePTS <= currentSamplePTS;
                   const prevOrder = nextSamplePTS <= prevPTS;
                   isPTSOrderRetained = currentOrder == prevOrder;
@@ -16068,8 +14780,8 @@ ${newDetails.m3u8}`);
       let nbNalu = 0;
       let naluLen = 0;
       let dtsStep = firstDTS;
-      for (let i = 0; i < nbSamples; i++) {
-        const sample = inputSamples[i];
+      for (let i2 = 0; i2 < nbSamples; i2++) {
+        const sample = inputSamples[i2];
         const units = sample.units;
         const nbUnits = units.length;
         let sampleLen = 0;
@@ -16112,8 +14824,8 @@ ${newDetails.m3u8}`);
       let minPtsDelta = Number.POSITIVE_INFINITY;
       let maxDtsDelta = Number.NEGATIVE_INFINITY;
       let maxPtsDelta = Number.NEGATIVE_INFINITY;
-      for (let i = 0; i < nbSamples; i++) {
-        const VideoSample = inputSamples[i];
+      for (let i2 = 0; i2 < nbSamples; i2++) {
+        const VideoSample = inputSamples[i2];
         const VideoSampleUnits = VideoSample.units;
         let mp4SampleLength = 0;
         for (let j = 0, nbUnits = VideoSampleUnits.length; j < nbUnits; j++) {
@@ -16127,13 +14839,13 @@ ${newDetails.m3u8}`);
           mp4SampleLength += 4 + unitDataLen;
         }
         let ptsDelta;
-        if (i < nbSamples - 1) {
-          mp4SampleDuration = inputSamples[i + 1].dts - VideoSample.dts;
-          ptsDelta = inputSamples[i + 1].pts - VideoSample.pts;
+        if (i2 < nbSamples - 1) {
+          mp4SampleDuration = inputSamples[i2 + 1].dts - VideoSample.dts;
+          ptsDelta = inputSamples[i2 + 1].pts - VideoSample.pts;
         } else {
           const config = this.config;
-          const lastFrameDuration = i > 0 ? VideoSample.dts - inputSamples[i - 1].dts : averageSampleDuration;
-          ptsDelta = i > 0 ? VideoSample.pts - inputSamples[i - 1].pts : averageSampleDuration;
+          const lastFrameDuration = i2 > 0 ? VideoSample.dts - inputSamples[i2 - 1].dts : averageSampleDuration;
+          ptsDelta = i2 > 0 ? VideoSample.pts - inputSamples[i2 - 1].pts : averageSampleDuration;
           if (config.stretchShortVideoTrack && this.nextAudioTs !== null) {
             const gapTolerance = Math.floor(config.maxBufferHole * timeScale);
             const deltaToFrameEnd = (audioTrackLength ? minPTS + audioTrackLength * timeScale : this.nextAudioTs + initTime) - VideoSample.pts;
@@ -16170,16 +14882,16 @@ ${newDetails.m3u8}`);
           if (maxPtsDelta - minPtsDelta < maxDtsDelta - minDtsDelta && averageSampleDuration / maxDtsDelta < 0.025 && outputSamples[0].cts === 0) {
             this.warn("Found irregular gaps in sample duration. Using PTS instead of DTS to determine MP4 sample duration.");
             let dts = firstDTS;
-            for (let i = 0, len = outputSamples.length; i < len; i++) {
-              const nextDts = dts + outputSamples[i].duration;
-              const pts = dts + outputSamples[i].cts;
-              if (i < len - 1) {
-                const nextPts = nextDts + outputSamples[i + 1].cts;
-                outputSamples[i].duration = nextPts - pts;
+            for (let i2 = 0, len = outputSamples.length; i2 < len; i2++) {
+              const nextDts = dts + outputSamples[i2].duration;
+              const pts = dts + outputSamples[i2].cts;
+              if (i2 < len - 1) {
+                const nextPts = nextDts + outputSamples[i2 + 1].cts;
+                outputSamples[i2].duration = nextPts - pts;
               } else {
-                outputSamples[i].duration = i ? outputSamples[i - 1].duration : averageSampleDuration;
+                outputSamples[i2].duration = i2 ? outputSamples[i2 - 1].duration : averageSampleDuration;
               }
-              outputSamples[i].cts = 0;
+              outputSamples[i2].cts = 0;
               dts = nextDts;
             }
           }
@@ -16259,13 +14971,13 @@ ${newDetails.m3u8}`);
       }
       if (track.segmentCodec === "aac") {
         const maxAudioFramesDrift = this.config.maxAudioFramesDrift;
-        for (let i = 0, nextPts = nextAudioTs + initTime; i < inputSamples.length; i++) {
-          const sample = inputSamples[i];
+        for (let i2 = 0, nextPts = nextAudioTs + initTime; i2 < inputSamples.length; i2++) {
+          const sample = inputSamples[i2];
           const pts = sample.pts;
           const delta = pts - nextPts;
           const duration = Math.abs(1e3 * delta / inputTimeScale);
           if (delta <= -maxAudioFramesDrift * inputSampleDuration && alignedWithVideo) {
-            if (i === 0) {
+            if (i2 === 0) {
               this.warn(`Audio frame @ ${(pts / inputTimeScale).toFixed(3)}s overlaps marker by ${Math.round(1e3 * delta / inputTimeScale)} ms.`);
               this.nextAudioTs = nextAudioTs = pts - initTime;
               nextPts = pts;
@@ -16277,7 +14989,7 @@ ${newDetails.m3u8}`);
               missing--;
               nextPts += inputSampleDuration;
             }
-            if (i === 0) {
+            if (i2 === 0) {
               this.nextAudioTs = nextAudioTs = nextPts - initTime;
             }
             this.warn(`Injecting ${missing} audio frames @ ${((nextPts - initTime) / inputTimeScale).toFixed(3)}s due to ${Math.round(1e3 * delta / inputTimeScale)} ms gap.`);
@@ -16287,12 +14999,12 @@ ${newDetails.m3u8}`);
                 this.log("Unable to get silent frame for given audio codec; duplicating last frame instead.");
                 fillFrame = sample.unit.subarray();
               }
-              inputSamples.splice(i, 0, {
+              inputSamples.splice(i2, 0, {
                 unit: fillFrame,
                 pts: nextPts
               });
               nextPts += inputSampleDuration;
-              i++;
+              i2++;
             }
           }
           sample.pts = nextPts;
@@ -16395,9 +15107,9 @@ ${newDetails.m3u8}`);
     return value;
   }
   function findKeyframeIndex(samples) {
-    for (let i = 0; i < samples.length; i++) {
-      if (samples[i].key) {
-        return i;
+    for (let i2 = 0; i2 < samples.length; i2++) {
+      if (samples[i2].key) {
+        return i2;
       }
     }
     return -1;
@@ -16408,8 +15120,8 @@ ${newDetails.m3u8}`);
       return;
     }
     const inputTimeScale = track.inputTimeScale;
-    for (let index2 = 0; index2 < length; index2++) {
-      const sample = track.samples[index2];
+    for (let index = 0; index < length; index++) {
+      const sample = track.samples[index];
       sample.pts = normalizePts(sample.pts - initPTS.baseTime * inputTimeScale / initPTS.timescale, timeOffset * inputTimeScale) / inputTimeScale;
       sample.dts = normalizePts(sample.dts - initDTS.baseTime * inputTimeScale / initDTS.timescale, timeOffset * inputTimeScale) / inputTimeScale;
     }
@@ -16425,8 +15137,8 @@ ${newDetails.m3u8}`);
       return;
     }
     const inputTimeScale = track.inputTimeScale;
-    for (let index2 = 0; index2 < length; index2++) {
-      const sample = track.samples[index2];
+    for (let index = 0; index < length; index++) {
+      const sample = track.samples[index];
       sample.pts = normalizePts(sample.pts - initPTS.baseTime * inputTimeScale / initPTS.timescale, timeOffset * inputTimeScale) / inputTimeScale;
     }
     track.samples.sort((a, b) => a.pts - b.pts);
@@ -16994,10 +15706,10 @@ ${newDetails.m3u8}`);
         typeSupported
       } = this;
       let mux;
-      for (let i = 0, len = muxConfig.length; i < len; i++) {
+      for (let i2 = 0, len = muxConfig.length; i2 < len; i2++) {
         var _muxConfig$i$demux;
-        if ((_muxConfig$i$demux = muxConfig[i].demux) != null && _muxConfig$i$demux.probe(data, this.logger)) {
-          mux = muxConfig[i];
+        if ((_muxConfig$i$demux = muxConfig[i2].demux) != null && _muxConfig$i$demux.probe(data, this.logger)) {
+          mux = muxConfig[i2];
           break;
         }
       }
@@ -18171,8 +16883,8 @@ ${newDetails.m3u8}`);
       const renditionReports = previous == null ? void 0 : previous.renditionReports;
       if (renditionReports) {
         let foundIndex = -1;
-        for (let i = 0; i < renditionReports.length; i++) {
-          const attr = renditionReports[i];
+        for (let i2 = 0; i2 < renditionReports.length; i2++) {
+          const attr = renditionReports[i2];
           let uri;
           try {
             uri = new self.URL(attr.URI, previous.url).href;
@@ -18181,10 +16893,10 @@ ${newDetails.m3u8}`);
             uri = attr.URI || "";
           }
           if (uri === playlistUri) {
-            foundIndex = i;
+            foundIndex = i2;
             break;
           } else if (uri === playlistUri.substring(0, uri.length)) {
-            foundIndex = i;
+            foundIndex = i2;
           }
         }
         if (foundIndex !== -1) {
@@ -18221,7 +16933,7 @@ ${newDetails.m3u8}`);
       }
       return uri;
     }
-    playlistLoaded(index2, data, previousDetails) {
+    playlistLoaded(index, data, previousDetails) {
       const {
         details,
         stats
@@ -18280,7 +16992,7 @@ ${newDetails.m3u8}`);
         } else {
           details.requestScheduled += reloadInterval;
         }
-        this.log(`live playlist ${index2} ${details.advanced ? "REFRESHED " + details.lastPartSn + "-" + details.lastPartIndex : details.updated ? "UPDATED" : "MISSED"}`);
+        this.log(`live playlist ${index} ${details.advanced ? "REFRESHED " + details.lastPartSn + "-" + details.lastPartIndex : details.updated ? "UPDATED" : "MISSED"}`);
         if (!this.canLoad || !details.live) {
           return;
         }
@@ -18404,8 +17116,8 @@ ${newDetails.m3u8}`);
     if (trackList1.length !== trackList2.length) {
       return false;
     }
-    for (let i = 0; i < trackList1.length; i++) {
-      if (!mediaAttributesIdentical(trackList1[i].attrs, trackList2[i].attrs)) {
+    for (let i2 = 0; i2 < trackList1.length; i2++) {
+      if (!mediaAttributesIdentical(trackList1[i2].attrs, trackList2[i2].attrs)) {
         return false;
       }
     }
@@ -18513,8 +17225,8 @@ ${newDetails.m3u8}`);
           if (this.selectDefaultTrack && !audioTracks.some((track) => track.default)) {
             this.selectDefaultTrack = false;
           }
-          audioTracks.forEach((track, i) => {
-            track.id = i;
+          audioTracks.forEach((track, i2) => {
+            track.id = i2;
           });
         } else if (!currentTrack && !this.tracksInGroup.length) {
           return;
@@ -18638,13 +17350,13 @@ ${newDetails.m3u8}`);
     }
     findTrackId(currentTrack) {
       const audioTracks = this.tracksInGroup;
-      for (let i = 0; i < audioTracks.length; i++) {
-        const track = audioTracks[i];
+      for (let i2 = 0; i2 < audioTracks.length; i2++) {
+        const track = audioTracks[i2];
         if (this.selectDefaultTrack && !track.default) {
           continue;
         }
         if (!currentTrack || matchesOption(currentTrack, track, audioMatchPredicate)) {
-          return i;
+          return i2;
         }
       }
       if (currentTrack) {
@@ -18656,8 +17368,8 @@ ${newDetails.m3u8}`);
           audioCodec,
           channels
         } = currentTrack;
-        for (let i = 0; i < audioTracks.length; i++) {
-          const track = audioTracks[i];
+        for (let i2 = 0; i2 < audioTracks.length; i2++) {
+          const track = audioTracks[i2];
           if (matchesOption({
             name,
             lang,
@@ -18666,19 +17378,19 @@ ${newDetails.m3u8}`);
             audioCodec,
             channels
           }, track, audioMatchPredicate)) {
-            return i;
+            return i2;
           }
         }
-        for (let i = 0; i < audioTracks.length; i++) {
-          const track = audioTracks[i];
+        for (let i2 = 0; i2 < audioTracks.length; i2++) {
+          const track = audioTracks[i2];
           if (mediaAttributesIdentical(currentTrack.attrs, track.attrs, ["LANGUAGE", "ASSOC-LANGUAGE", "CHARACTERISTICS"])) {
-            return i;
+            return i2;
           }
         }
-        for (let i = 0; i < audioTracks.length; i++) {
-          const track = audioTracks[i];
+        for (let i2 = 0; i2 < audioTracks.length; i2++) {
+          const track = audioTracks[i2];
           if (mediaAttributesIdentical(currentTrack.attrs, track.attrs, ["LANGUAGE"])) {
-            return i;
+            return i2;
           }
         }
       }
@@ -19205,11 +17917,11 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
             const open = mediaSource.readyState === "open";
             try {
               const sourceBuffers = mediaSource.sourceBuffers;
-              for (let i = sourceBuffers.length; i--; ) {
+              for (let i2 = sourceBuffers.length; i2--; ) {
                 if (open) {
-                  sourceBuffers[i].abort();
+                  sourceBuffers[i2].abort();
                 }
-                mediaSource.removeSourceBuffer(sourceBuffers[i]);
+                mediaSource.removeSourceBuffer(sourceBuffers[i2]);
               }
               if (open) {
                 mediaSource.endOfStream();
@@ -20402,7 +19114,7 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       if (!levels.length) {
         return -1;
       }
-      const validLevels = levels.filter((level, index2) => this.isLevelAllowed(level) && index2 <= capLevelIndex);
+      const validLevels = levels.filter((level, index) => this.isLevelAllowed(level) && index <= capLevelIndex);
       this.clientRect = null;
       return _CapLevelController.getMaxLevelByMediaSize(validLevels, this.mediaWidth, this.mediaHeight);
     }
@@ -20479,10 +19191,10 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       };
       let maxLevelIndex = levels.length - 1;
       const squareSize = Math.max(width, height);
-      for (let i = 0; i < levels.length; i += 1) {
-        const level = levels[i];
-        if ((level.width >= squareSize || level.height >= squareSize) && atGreatestBandwidth(level, levels[i + 1])) {
-          maxLevelIndex = i;
+      for (let i2 = 0; i2 < levels.length; i2 += 1) {
+        const level = levels[i2];
+        if ((level.width >= squareSize || level.height >= squareSize) && atGreatestBandwidth(level, levels[i2 + 1])) {
+          maxLevelIndex = i2;
           break;
         }
       }
@@ -20939,9 +19651,9 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     if (obj == null || typeof obj !== "object") {
       return results;
     }
-    const version3 = options.version || obj["v"] || 1;
+    const version2 = options.version || obj["v"] || 1;
     const reportingMode = options.reportingMode || CMCD_REQUEST_MODE;
-    const keyFilter = version3 === 1 ? isCmcdV1Key : filterMap[reportingMode];
+    const keyFilter = version2 === 1 ? isCmcdV1Key : filterMap[reportingMode];
     let keys = Object.keys(obj).filter(keyFilter);
     const filter = options.filter;
     if (typeof filter === "function") {
@@ -20951,12 +19663,12 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     if (needsTimestamp && !keys.includes("ts")) {
       keys.push("ts");
     }
-    if (version3 > 1 && !keys.includes("v")) {
+    if (version2 > 1 && !keys.includes("v")) {
       keys.push("v");
     }
     const formatters = _extends({}, CMCD_FORMATTER_MAP, options.formatters);
     const formatterOptions = {
-      version: version3,
+      version: version2,
       reportingMode,
       baseUrl: options.baseUrl
     };
@@ -20967,10 +19679,10 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
         value = formatter(value, formatterOptions);
       }
       if (key === "v") {
-        if (version3 === 1) {
+        if (version2 === 1) {
           return;
         } else {
-          value = version3;
+          value = version2;
         }
       }
       if (key == "pr" && value === 1) {
@@ -21210,15 +19922,15 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       var _this$hls$levels$frag;
       const levelDetails = (_this$hls$levels$frag = this.hls.levels[fragment.level]) == null ? void 0 : _this$hls$levels$frag.details;
       if (levelDetails) {
-        const index2 = fragment.sn - levelDetails.startSN;
-        return levelDetails.fragments[index2 + 1];
+        const index = fragment.sn - levelDetails.startSN;
+        return levelDetails.fragments[index + 1];
       }
       return void 0;
     }
     getNextPart(part) {
       var _this$hls$levels$frag2;
       const {
-        index: index2,
+        index,
         fragment
       } = part;
       const partList = (_this$hls$levels$frag2 = this.hls.levels[fragment.level]) == null || (_this$hls$levels$frag2 = _this$hls$levels$frag2.details) == null ? void 0 : _this$hls$levels$frag2.partList;
@@ -21226,10 +19938,10 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
         const {
           sn
         } = fragment;
-        for (let i = partList.length - 1; i >= 0; i--) {
-          const p = partList[i];
-          if (p.index === index2 && p.fragment.sn === sn) {
-            return partList[i + 1];
+        for (let i2 = partList.length - 1; i2 >= 0; i2--) {
+          const p = partList[i2];
+          if (p.index === index && p.fragment.sn === sn) {
+            return partList[i2 + 1];
           }
         }
       }
@@ -21542,8 +20254,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
           delete penalizedPathways[pathwayId];
         }
       });
-      for (let i = 0; i < pathwayPriority.length; i++) {
-        const pathwayId = pathwayPriority[i];
+      for (let i2 = 0; i2 < pathwayPriority.length; i2++) {
+        const pathwayId = pathwayPriority[i2];
         if (pathwayId in penalizedPathways) {
           continue;
         }
@@ -21573,9 +20285,9 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     }
     getPathwayForGroupId(groupId, type, defaultPathway) {
       const levels = this.getLevelsForPathway(defaultPathway).concat(this.levels || []);
-      for (let i = 0; i < levels.length; i++) {
-        if (type === PlaylistContextType.AUDIO_TRACK && levels[i].hasAudioGroup(groupId) || type === PlaylistContextType.SUBTITLE_TRACK && levels[i].hasSubtitleGroup(groupId)) {
-          return levels[i].pathwayId;
+      for (let i2 = 0; i2 < levels.length; i2++) {
+        if (type === PlaylistContextType.AUDIO_TRACK && levels[i2].hasAudioGroup(groupId) || type === PlaylistContextType.SUBTITLE_TRACK && levels[i2].hasSubtitleGroup(groupId)) {
+          return levels[i2].pathwayId;
         }
       }
       return defaultPathway;
@@ -21621,13 +20333,13 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
             width: baseLevel.width
           });
           if (baseLevel.audioGroups) {
-            for (let i = 1; i < baseLevel.audioGroups.length; i++) {
-              clonedLevel.addGroupId("audio", `${baseLevel.audioGroups[i]}_clone_${cloneId}`);
+            for (let i2 = 1; i2 < baseLevel.audioGroups.length; i2++) {
+              clonedLevel.addGroupId("audio", `${baseLevel.audioGroups[i2]}_clone_${cloneId}`);
             }
           }
           if (baseLevel.subtitleGroups) {
-            for (let i = 1; i < baseLevel.subtitleGroups.length; i++) {
-              clonedLevel.addGroupId("text", `${baseLevel.subtitleGroups[i]}_clone_${cloneId}`);
+            for (let i2 = 1; i2 < baseLevel.subtitleGroups.length; i2++) {
+              clonedLevel.addGroupId("text", `${baseLevel.subtitleGroups[i2]}_clone_${cloneId}`);
             }
           }
           return clonedLevel;
@@ -21851,8 +20563,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
             mediaKeySessions
           } = this;
           let keySessionContextPromise = keyIdToKeySessionPromise[keyIdHex];
-          for (let i = 0; i < mediaKeySessions.length; i++) {
-            const keyContext = mediaKeySessions[i];
+          for (let i2 = 0; i2 < mediaKeySessions.length; i2++) {
+            const keyContext = mediaKeySessions[i2];
             const decryptdata = keyContext.decryptdata;
             if (!decryptdata.keyId) {
               continue;
@@ -21945,7 +20657,7 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     }
     attemptKeySystemAccess(keySystemsToAttempt) {
       const levels = this.hls.levels;
-      const uniqueCodec = (value, i, a) => !!value && a.indexOf(value) === i;
+      const uniqueCodec = (value, i2, a) => !!value && a.indexOf(value) === i2;
       const audioCodecs = levels.map((level) => level.audioCodec).filter(uniqueCodec);
       const videoCodecs = levels.map((level) => level.videoCodec).filter(uniqueCodec);
       if (audioCodecs.length + videoCodecs.length === 0) {
@@ -22108,8 +20820,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       const {
         mediaKeySessions
       } = this;
-      for (let i = 0; i < mediaKeySessions.length; i++) {
-        const status2 = getKeyStatus(decryptdata, mediaKeySessions[i]);
+      for (let i2 = 0; i2 < mediaKeySessions.length; i2++) {
+        const status2 = getKeyStatus(decryptdata, mediaKeySessions[i2]);
         if (status2) {
           return status2;
         }
@@ -22505,9 +21217,9 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       const headers = keyMessageXml.querySelectorAll("HttpHeader");
       if (headers.length > 0) {
         let header;
-        for (let i = 0, len = headers.length; i < len; i++) {
+        for (let i2 = 0, len = headers.length; i2 < len; i2++) {
           var _header$querySelector, _header$querySelector2;
-          header = headers[i];
+          header = headers[i2];
           const name = (_header$querySelector = header.querySelector("name")) == null ? void 0 : _header$querySelector.textContent;
           const value = (_header$querySelector2 = header.querySelector("value")) == null ? void 0 : _header$querySelector2.textContent;
           if (name && value) {
@@ -22729,9 +21441,9 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
           licenseXhr.abort();
         }
         mediaKeySessionContext.mediaKeysSession = mediaKeySessionContext.decryptdata = mediaKeySessionContext.licenseXhr = void 0;
-        const index2 = this.mediaKeySessions.indexOf(mediaKeySessionContext);
-        if (index2 > -1) {
-          this.mediaKeySessions.splice(index2, 1);
+        const index = this.mediaKeySessions.indexOf(mediaKeySessionContext);
+        if (index > -1) {
+          this.mediaKeySessions.splice(index, 1);
         }
         const {
           keyStatusTimeouts
@@ -22946,11 +21658,11 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       track.mode = "hidden";
     }
     if (track.cues) {
-      for (let i = track.cues.length; i--; ) {
+      for (let i2 = track.cues.length; i2--; ) {
         if (enterHandler) {
-          track.cues[i].removeEventListener("enter", enterHandler);
+          track.cues[i2].removeEventListener("enter", enterHandler);
         }
-        track.removeCue(track.cues[i]);
+        track.removeCue(track.cues[i2]);
       }
     }
     if (mode === "disabled") {
@@ -22964,9 +21676,9 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     }
     if (track.cues && track.cues.length > 0) {
       const cues = getCuesInRange(track.cues, start, end);
-      for (let i = 0; i < cues.length; i++) {
-        if (!predicate || predicate(cues[i])) {
-          track.removeCue(cues[i]);
+      for (let i2 = 0; i2 < cues.length; i2++) {
+        if (!predicate || predicate(cues[i2])) {
+          track.removeCue(cues[i2]);
         }
       }
     }
@@ -23001,8 +21713,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     const cuesFound = [];
     const firstCueInRange = getFirstCueIndexFromTime(cues, start);
     if (firstCueInRange > -1) {
-      for (let i = firstCueInRange, len = cues.length; i < len; i++) {
-        const cue = cues[i];
+      for (let i2 = firstCueInRange, len = cues.length; i2 < len; i2++) {
+        const cue = cues[i2];
         if (cue.startTime >= start && cue.endTime <= end) {
           cuesFound.push(cue);
         } else if (cue.startTime > end) {
@@ -23014,10 +21726,10 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
   }
   function filterSubtitleTracks(textTrackList) {
     const tracks = [];
-    for (let i = 0; i < textTrackList.length; i++) {
-      const track = textTrackList[i];
+    for (let i2 = 0; i2 < textTrackList.length; i2++) {
+      const track = textTrackList[i2];
       if ((track.kind === "subtitles" || track.kind === "captions") && track.label) {
-        tracks.push(textTrackList[i]);
+        tracks.push(textTrackList[i2]);
       }
     }
     return tracks;
@@ -23046,11 +21758,11 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
         }
         let textTrack = null;
         const tracks = filterSubtitleTracks(this.media.textTracks);
-        for (let i = 0; i < tracks.length; i++) {
-          if (tracks[i].mode === "hidden") {
-            textTrack = tracks[i];
-          } else if (tracks[i].mode === "showing") {
-            textTrack = tracks[i];
+        for (let i2 = 0; i2 < tracks.length; i2++) {
+          if (tracks[i2].mode === "hidden") {
+            textTrack = tracks[i2];
+          } else if (tracks[i2].mode === "showing") {
+            textTrack = tracks[i2];
             break;
           }
         }
@@ -23201,8 +21913,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
           if (this.selectDefaultTrack && !subtitleTracks.some((track) => track.default)) {
             this.selectDefaultTrack = false;
           }
-          subtitleTracks.forEach((track, i) => {
-            track.id = i;
+          subtitleTracks.forEach((track, i2) => {
+            track.id = i2;
           });
         } else if (!currentTrack && !this.tracksInGroup.length) {
           return;
@@ -23236,26 +21948,26 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     findTrackId(currentTrack) {
       const tracks = this.tracksInGroup;
       const selectDefault = this.selectDefaultTrack;
-      for (let i = 0; i < tracks.length; i++) {
-        const track = tracks[i];
+      for (let i2 = 0; i2 < tracks.length; i2++) {
+        const track = tracks[i2];
         if (selectDefault && !track.default || !selectDefault && !currentTrack) {
           continue;
         }
         if (!currentTrack || matchesOption(track, currentTrack)) {
-          return i;
+          return i2;
         }
       }
       if (currentTrack) {
-        for (let i = 0; i < tracks.length; i++) {
-          const track = tracks[i];
+        for (let i2 = 0; i2 < tracks.length; i2++) {
+          const track = tracks[i2];
           if (mediaAttributesIdentical(currentTrack.attrs, track.attrs, ["LANGUAGE", "ASSOC-LANGUAGE", "CHARACTERISTICS"])) {
-            return i;
+            return i2;
           }
         }
-        for (let i = 0; i < tracks.length; i++) {
-          const track = tracks[i];
+        for (let i2 = 0; i2 < tracks.length; i2++) {
+          const track = tracks[i2];
           if (mediaAttributesIdentical(currentTrack.attrs, track.attrs, ["LANGUAGE"])) {
-            return i;
+            return i2;
           }
         }
       }
@@ -23264,10 +21976,10 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     findTrackForTextTrack(textTrack) {
       if (textTrack) {
         const tracks = this.tracksInGroup;
-        for (let i = 0; i < tracks.length; i++) {
-          const track = tracks[i];
+        for (let i2 = 0; i2 < tracks.length; i2++) {
+          const track = tracks[i2];
           if (subtitleTrackMatchesTextTrack(track, textTrack)) {
-            return i;
+            return i2;
           }
         }
       }
@@ -23453,9 +22165,9 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
   }
   function hash(text) {
     let hash2 = 5381;
-    let i = text.length;
-    while (i) {
-      hash2 = hash2 * 33 ^ text.charCodeAt(--i);
+    let i2 = text.length;
+    while (i2) {
+      hash2 = hash2 * 33 ^ text.charCodeAt(--i2);
     }
     return (hash2 >>> 0).toString();
   }
@@ -23532,8 +22244,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       return assetOffset > playoutLimit;
     }
     findAssetIndex(asset) {
-      const index2 = this.assetList.indexOf(asset);
-      return index2;
+      const index = this.assetList.indexOf(asset);
+      return index;
     }
     get identifier() {
       return this.dateRange.id;
@@ -23978,37 +22690,37 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       if (item.event) {
         return this.findEventIndex(item.event.identifier);
       }
-      let index2 = -1;
+      let index = -1;
       if (item.nextEvent) {
-        index2 = this.findEventIndex(item.nextEvent.identifier) - 1;
+        index = this.findEventIndex(item.nextEvent.identifier) - 1;
       } else if (item.previousEvent) {
-        index2 = this.findEventIndex(item.previousEvent.identifier) + 1;
+        index = this.findEventIndex(item.previousEvent.identifier) + 1;
       }
       const items = this.items;
       if (items) {
-        if (!items[index2]) {
+        if (!items[index]) {
           if (time === void 0) {
             time = item.start;
           }
-          index2 = this.findItemIndexAtTime(time);
+          index = this.findItemIndexAtTime(time);
         }
-        while (index2 >= 0 && (_items$index = items[index2]) != null && _items$index.event) {
+        while (index >= 0 && (_items$index = items[index]) != null && _items$index.event) {
           var _items$index;
-          index2--;
+          index--;
         }
       }
-      return index2;
+      return index;
     }
     findItemIndexAtTime(timelinePos, timelineType) {
       const items = this.items;
       if (items) {
-        for (let i = 0; i < items.length; i++) {
-          let timeRange = items[i];
+        for (let i2 = 0; i2 < items.length; i2++) {
+          let timeRange = items[i2];
           if (timelineType && timelineType !== "primary") {
             timeRange = timeRange[timelineType];
           }
           if (timelinePos === timeRange.start || timelinePos > timeRange.start && timelinePos < timeRange.end) {
-            return i;
+            return i2;
           }
         }
       }
@@ -24017,13 +22729,13 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     findJumpRestrictedIndex(startIndex, endIndex) {
       const items = this.items;
       if (items) {
-        for (let i = startIndex; i <= endIndex; i++) {
-          if (!items[i]) {
+        for (let i2 = startIndex; i2 <= endIndex; i2++) {
+          if (!items[i2]) {
             break;
           }
-          const event = items[i].event;
+          const event = items[i2].event;
           if (event != null && event.restrictions.jump && !event.appendInPlace) {
-            return i;
+            return i2;
           }
         }
       }
@@ -24032,10 +22744,10 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     findEventIndex(identifier) {
       const items = this.items;
       if (items) {
-        for (let i = items.length; i--; ) {
+        for (let i2 = items.length; i2--; ) {
           var _items$i$event;
-          if (((_items$i$event = items[i].event) == null ? void 0 : _items$i$event.identifier) === identifier) {
-            return i;
+          if (((_items$i$event = items[i2].event) == null ? void 0 : _items$i$event.identifier) === identifier) {
+            return i2;
           }
         }
       }
@@ -24045,12 +22757,12 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       const assetList = event.assetList;
       const length = assetList.length;
       if (length > 1) {
-        for (let i = 0; i < length; i++) {
-          const asset = assetList[i];
+        for (let i2 = 0; i2 < length; i2++) {
+          const asset = assetList[i2];
           if (!asset.error) {
             const timelineStart = asset.timelineStart;
-            if (timelinePos === timelineStart || timelinePos > timelineStart && (timelinePos < timelineStart + (asset.duration || 0) || i === length - 1)) {
-              return i;
+            if (timelinePos === timelineStart || timelinePos > timelineStart && (timelinePos < timelineStart + (asset.duration || 0) || i2 === length - 1)) {
+              return i2;
             }
           }
         }
@@ -24119,8 +22831,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       if (events.length || removedInterstitials.length || this.length < 2) {
         const currentItems = this.items;
         const updatedItems = this.parseSchedule(events, mediaSelection);
-        const updated = forceUpdate || removedInterstitials.length || (currentItems == null ? void 0 : currentItems.length) !== updatedItems.length || updatedItems.some((item, i) => {
-          return Math.abs(item.playout.start - currentItems[i].playout.start) > 5e-3 || Math.abs(item.playout.end - currentItems[i].playout.end) > 5e-3;
+        const updated = forceUpdate || removedInterstitials.length || (currentItems == null ? void 0 : currentItems.length) !== updatedItems.length || updatedItems.some((item, i2) => {
+          return Math.abs(item.playout.start - currentItems[i2].playout.start) > 5e-3 || Math.abs(item.playout.end - currentItems[i2].playout.end) > 5e-3;
         });
         if (updated) {
           this.items = updatedItems;
@@ -24131,8 +22843,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
     parseDateRanges(dateRanges, baseData, enableAppendInPlace) {
       const interstitialEvents = [];
       const ids = Object.keys(dateRanges);
-      for (let i = 0; i < ids.length; i++) {
-        const id = ids[i];
+      for (let i2 = 0; i2 < ids.length; i2++) {
+        const id = ids[i2];
         const dateRange = dateRanges[id];
         if (dateRange.isInterstitial) {
           let interstitial = this.eventMap[id];
@@ -24160,10 +22872,10 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
         this.resolveOffsets(interstitialEvents, mediaSelection);
         let primaryPosition = 0;
         let integratedTime = 0;
-        interstitialEvents.forEach((interstitial, i) => {
+        interstitialEvents.forEach((interstitial, i2) => {
           const preroll = interstitial.cue.pre;
           const postroll = interstitial.cue.post;
-          const previousEvent = interstitialEvents[i - 1] || null;
+          const previousEvent = interstitialEvents[i2 - 1] || null;
           const appendInPlace = interstitial.appendInPlace;
           const eventStart = postroll ? primaryDuration : interstitial.startOffset;
           const interstitialDuration = interstitial.duration;
@@ -24201,7 +22913,7 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
                 const _playoutStart = playoutDuration;
                 playoutDuration += segmentDuration;
                 const primarySegment = {
-                  previousEvent: interstitialEvents[i - 1] || null,
+                  previousEvent: interstitialEvents[i2 - 1] || null,
                   nextEvent: interstitial,
                   start: timelineStart,
                   end: timelineStart + segmentDuration,
@@ -24307,7 +23019,7 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       const primaryDuration = details.live ? Infinity : details.edge;
       let cumulativeDuration = 0;
       let lastScheduledStart = -1;
-      interstitialEvents.forEach((interstitial, i) => {
+      interstitialEvents.forEach((interstitial, i2) => {
         const preroll = interstitial.cue.pre;
         const postroll = interstitial.cue.post;
         const eventStart = preroll ? 0 : postroll ? primaryDuration : interstitial.startTime;
@@ -24328,11 +23040,11 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
             interstitial.appendInPlace = false;
           }
         }
-        if (!interstitial.appendInPlace && i + 1 < interstitialEvents.length) {
-          const timeBetween = interstitialEvents[i + 1].startTime - interstitialEvents[i].resumeTime;
+        if (!interstitial.appendInPlace && i2 + 1 < interstitialEvents.length) {
+          const timeBetween = interstitialEvents[i2 + 1].startTime - interstitialEvents[i2].resumeTime;
           if (timeBetween < ABUTTING_THRESHOLD_SECONDS) {
-            interstitialEvents[i + 1].appendInPlace = false;
-            if (interstitialEvents[i + 1].appendInPlace) {
+            interstitialEvents[i2 + 1].appendInPlace = false;
+            if (interstitialEvents[i2 + 1].appendInPlace) {
               this.warn(`Could not change append strategy for abutting event ${interstitial}`);
             }
           }
@@ -24378,8 +23090,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
       let sumDuration = 0;
       let hasUnknownDuration = false;
       let hasErrors = false;
-      for (let i = 0; i < interstitial.assetList.length; i++) {
-        const asset = interstitial.assetList[i];
+      for (let i2 = 0; i2 < interstitial.assetList.length; i2++) {
+        const asset = interstitial.assetList[i2];
         const timelineStart = eventStart + sumDuration;
         asset.startOffset = sumDuration;
         asset.timelineStart = timelineStart;
@@ -24874,8 +23586,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         var _c$schedule;
         if (primaryTime !== 0 && timelineType !== "primary" && (_c$schedule = c.schedule) != null && _c$schedule.length) {
           var _c$schedule$items;
-          const index2 = c.schedule.findItemIndexAtTime(primaryTime);
-          const item = (_c$schedule$items = c.schedule.items) == null ? void 0 : _c$schedule$items[index2];
+          const index = c.schedule.findItemIndexAtTime(primaryTime);
+          const item = (_c$schedule$items = c.schedule.items) == null ? void 0 : _c$schedule$items[index];
           if (item) {
             const diff = item[timelineType].start - item.start;
             return primaryTime + diff;
@@ -24953,10 +23665,10 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
             } else {
               const assetList = targetItem.event.assetList;
               const eventTime = time - (targetItem[timelineType] || targetItem).start;
-              for (let i = assetList.length; i--; ) {
-                const asset = assetList[i];
+              for (let i2 = assetList.length; i2--; ) {
+                const asset = assetList[i2];
                 if (asset.duration && eventTime >= asset.startOffset && eventTime < asset.startOffset + asset.duration) {
-                  assetIndex = i;
+                  assetIndex = i2;
                   break;
                 }
               }
@@ -25107,12 +23819,12 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
           const item = c.effectivePlayingItem;
           const event = item == null ? void 0 : item.event;
           if (event && !event.restrictions.skip) {
-            const index2 = c.findItemIndex(item);
+            const index = c.findItemIndex(item);
             if (event.appendInPlace) {
               const time = item.playout.start + item.event.duration;
               seekTo(time + 1e-3, "playout");
             } else {
-              c.advanceAfterAssetEnded(event, index2, Infinity);
+              c.advanceAfterAssetEnded(event, index, Infinity);
             }
           }
         }
@@ -25276,16 +23988,16 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         this.log(timelineMessage("checkStart", startPosition));
         this.timelinePos = startPosition;
         if (interstitialEvents.length && interstitialEvents[0].cue.pre) {
-          const index2 = schedule.findEventIndex(interstitialEvents[0].identifier);
-          this.setSchedulePosition(index2);
+          const index = schedule.findEventIndex(interstitialEvents[0].identifier);
+          this.setSchedulePosition(index);
         } else if (startPosition >= 0 || !this.primaryLive) {
           const start = this.timelinePos = startPosition > 0 ? startPosition : 0;
-          const index2 = schedule.findItemIndexAtTime(start);
-          this.setSchedulePosition(index2);
+          const index = schedule.findItemIndexAtTime(start);
+          this.setSchedulePosition(index);
         }
       } else if (effectivePlayingItem && !this.playingItem) {
-        const index2 = schedule.findItemIndex(effectivePlayingItem);
-        this.setSchedulePosition(index2);
+        const index = schedule.findItemIndex(effectivePlayingItem);
+        this.setSchedulePosition(index);
       }
     }
     advanceAssetBuffering(item, assetItem) {
@@ -25302,7 +24014,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         }
       }
     }
-    advanceAfterAssetEnded(interstitial, index2, assetListIndex) {
+    advanceAfterAssetEnded(interstitial, index, assetListIndex) {
       const nextAssetIndex = getNextAssetIndex(interstitial, assetListIndex);
       if (!interstitial.isAssetPastPlayoutLimit(nextAssetIndex)) {
         if (interstitial.appendInPlace) {
@@ -25311,11 +24023,11 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
             this.advanceInPlace(assetItem.timelineStart);
           }
         }
-        this.setSchedulePosition(index2, nextAssetIndex);
+        this.setSchedulePosition(index, nextAssetIndex);
       } else if (this.schedule) {
         const scheduleItems = this.schedule.items;
         if (scheduleItems) {
-          const nextIndex = index2 + 1;
+          const nextIndex = index + 1;
           const scheduleLength = scheduleItems.length;
           if (nextIndex >= scheduleLength) {
             this.setSchedulePosition(-1);
@@ -25347,14 +24059,14 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         this.advanceAfterAssetEnded(interstitial, itemIndex, assetListIndex - 1);
       }
     }
-    setSchedulePosition(index2, assetListIndex) {
+    setSchedulePosition(index, assetListIndex) {
       var _this$schedule2;
       const scheduleItems = (_this$schedule2 = this.schedule) == null ? void 0 : _this$schedule2.items;
       if (!scheduleItems || this.playbackDisabled) {
         return;
       }
-      const scheduledItem = index2 >= 0 ? scheduleItems[index2] : null;
-      this.log(`setSchedulePosition ${index2}, ${assetListIndex} (${scheduledItem ? segmentToString(scheduledItem) : scheduledItem}) pos: ${this.timelinePos}`);
+      const scheduledItem = index >= 0 ? scheduleItems[index] : null;
+      this.log(`setSchedulePosition ${index}, ${assetListIndex} (${scheduledItem ? segmentToString(scheduledItem) : scheduledItem}) pos: ${this.timelinePos}`);
       const currentItem = this.waitingItem || this.playingItem;
       const playingLastItem = this.playingLastItem;
       if (this.isInterstitial(currentItem)) {
@@ -25373,7 +24085,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
             assetListIndex: playingAssetListIndex,
             event: interstitial,
             schedule: scheduleItems.slice(0),
-            scheduleIndex: index2,
+            scheduleIndex: index,
             player
           });
           if (currentItem !== this.playingItem) {
@@ -25396,7 +24108,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
           this.hls.trigger(Events.INTERSTITIAL_ENDED, {
             event: interstitial,
             schedule: scheduleItems.slice(0),
-            scheduleIndex: index2
+            scheduleIndex: index
           });
           if (interstitial.cue.once) {
             var _this$schedule3;
@@ -25410,21 +24122,21 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
           }
         }
       }
-      this.advanceSchedule(index2, scheduleItems, assetListIndex, currentItem, playingLastItem);
+      this.advanceSchedule(index, scheduleItems, assetListIndex, currentItem, playingLastItem);
     }
-    advanceSchedule(index2, scheduleItems, assetListIndex, currentItem, playedLastItem) {
+    advanceSchedule(index, scheduleItems, assetListIndex, currentItem, playedLastItem) {
       const schedule = this.schedule;
       if (!schedule) {
         return;
       }
-      const scheduledItem = scheduleItems[index2] || null;
+      const scheduledItem = scheduleItems[index] || null;
       const media = this.primaryMedia;
       const playerQueue = this.playerQueue;
       if (playerQueue.length) {
         playerQueue.forEach((player) => {
           const interstitial = player.interstitial;
           const queuedIndex = schedule.findEventIndex(interstitial.identifier);
-          if (queuedIndex < index2 || queuedIndex > index2 + 1) {
+          if (queuedIndex < index || queuedIndex > index + 1) {
             this.clearInterstitial(interstitial, scheduledItem);
           }
         });
@@ -25436,7 +24148,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
           assetListIndex = schedule.findAssetIndex(interstitial, this.timelinePos);
           const assetIndexCandidate = getNextAssetIndex(interstitial, assetListIndex - 1);
           if (interstitial.isAssetPastPlayoutLimit(assetIndexCandidate) || interstitial.appendInPlace && this.timelinePos === scheduledItem.end) {
-            this.advanceAfterAssetEnded(interstitial, index2, assetListIndex);
+            this.advanceAfterAssetEnded(interstitial, index, assetListIndex);
             return;
           }
           assetListIndex = assetIndexCandidate;
@@ -25452,7 +24164,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
           this.hls.trigger(Events.INTERSTITIAL_STARTED, {
             event: interstitial,
             schedule: scheduleItems.slice(0),
-            scheduleIndex: index2
+            scheduleIndex: index
           });
         }
         if (!interstitial.assetListLoaded) {
@@ -25471,7 +24183,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         this.playingItem = scheduledItem;
         const assetItem = interstitial.assetList[assetListIndex];
         if (!assetItem) {
-          this.advanceAfterAssetEnded(interstitial, index2, assetListIndex || 0);
+          this.advanceAfterAssetEnded(interstitial, index, assetListIndex || 0);
           return;
         }
         if (!player) {
@@ -25488,12 +24200,12 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
             return;
           }
         }
-        this.startAssetPlayer(player, assetListIndex, scheduleItems, index2, media);
+        this.startAssetPlayer(player, assetListIndex, scheduleItems, index, media);
         if (this.shouldPlay) {
           playWithCatch(player.media);
         }
       } else if (scheduledItem) {
-        this.resumePrimary(scheduledItem, index2, currentItem);
+        this.resumePrimary(scheduledItem, index, currentItem);
         if (this.shouldPlay) {
           playWithCatch(this.hls.media);
         }
@@ -25516,7 +24228,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       var _this$primaryDetails;
       return !!((_this$primaryDetails = this.primaryDetails) != null && _this$primaryDetails.live);
     }
-    resumePrimary(scheduledItem, index2, fromItem) {
+    resumePrimary(scheduledItem, index, fromItem) {
       var _this$detachedData4, _this$schedule4;
       this.playingItem = scheduledItem;
       this.playingAsset = this.endedAsset = null;
@@ -25526,7 +24238,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       if (!((_this$detachedData4 = this.detachedData) != null && _this$detachedData4.mediaSource)) {
         let timelinePos = this.timelinePos;
         if (timelinePos < scheduledItem.start || timelinePos >= scheduledItem.end) {
-          timelinePos = this.getPrimaryResumption(scheduledItem, index2);
+          timelinePos = this.getPrimaryResumption(scheduledItem, index);
           this.log(timelineMessage("resumePrimary", timelinePos));
           this.timelinePos = timelinePos;
         }
@@ -25542,15 +24254,15 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       this.log(`INTERSTITIALS_PRIMARY_RESUMED ${segmentToString(scheduledItem)}`);
       this.hls.trigger(Events.INTERSTITIALS_PRIMARY_RESUMED, {
         schedule: scheduleItems.slice(0),
-        scheduleIndex: index2
+        scheduleIndex: index
       });
       this.checkBuffer();
     }
-    getPrimaryResumption(scheduledItem, index2) {
+    getPrimaryResumption(scheduledItem, index) {
       const itemStart = scheduledItem.start;
       if (this.primaryLive) {
         const details = this.primaryDetails;
-        if (index2 === 0) {
+        if (index === 0) {
           return this.hls.startPosition;
         } else if (details && (itemStart < details.fragmentStart || itemStart > details.edge)) {
           return this.hls.liveSyncPosition || -1;
@@ -25694,8 +24406,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       }
       const interstitialEvents = this.schedule.events;
       if (this.bufferedPos < Number.MAX_VALUE && interstitialEvents) {
-        for (let i = 0; i < interstitialEvents.length; i++) {
-          const interstitial = interstitialEvents[i];
+        for (let i2 = 0; i2 < interstitialEvents.length; i2++) {
+          const interstitial = interstitialEvents[i2];
           if (interstitial.cue.post) {
             var _this$schedule$items2;
             const scheduleIndex = this.schedule.findEventIndex(interstitial.identifier);
@@ -25722,15 +24434,15 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       var _this$schedule6;
       const items = (_this$schedule6 = this.schedule) == null ? void 0 : _this$schedule6.items;
       if (previousItem && items) {
-        const index2 = this.findItemIndex(previousItem, time);
-        return items[index2] || null;
+        const index = this.findItemIndex(previousItem, time);
+        return items[index] || null;
       }
       return null;
     }
     trimInPlace(updatedItem, itemBeforeUpdate) {
       if (this.isInterstitial(updatedItem) && updatedItem.event.appendInPlace && itemBeforeUpdate.end - updatedItem.end > 0.25) {
-        updatedItem.event.assetList.forEach((asset, index2) => {
-          if (updatedItem.event.isAssetPastPlayoutLimit(index2)) {
+        updatedItem.event.assetList.forEach((asset, index) => {
+          if (updatedItem.event.isAssetPastPlayoutLimit(index)) {
             this.clearAssetPlayer(asset.identifier, null);
           }
         });
@@ -25853,10 +24565,10 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         if (!this.playbackDisabled) {
           if (isInterstitial) {
             const bufferIndex = schedule.findAssetIndex(item.event, this.bufferedPos);
-            item.event.assetList.forEach((asset, i) => {
+            item.event.assetList.forEach((asset, i2) => {
               const player = this.getAssetPlayer(asset.identifier);
               if (player) {
-                if (i === bufferIndex) {
+                if (i2 === bufferIndex) {
                   player.loadSource();
                 }
                 player.resumeBuffering();
@@ -25901,8 +24613,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       }
     }
     preloadPrimary(item) {
-      const index2 = this.findItemIndex(item);
-      const timelinePos = this.getPrimaryResumption(item, index2);
+      const index = this.findItemIndex(item);
+      const timelinePos = this.getPrimaryResumption(item, index);
       this.startLoadingPrimaryAt(timelinePos);
     }
     bufferedToEvent(item, assetListIndex) {
@@ -25956,11 +24668,11 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
           interstitial.assetListLoader = assetListLoader;
         }
       } else if (!playOnce && assetListLength) {
-        for (let i = assetListIndex; i < assetListLength; i++) {
-          const _asset = interstitial.assetList[i];
+        for (let i2 = assetListIndex; i2 < assetListLength; i2++) {
+          const _asset = interstitial.assetList[i2];
           const playerIndex = this.getAssetPlayerQueueIndex(_asset.identifier);
           if ((playerIndex === -1 || this.playerQueue[playerIndex].destroyed) && !_asset.error) {
-            this.createAssetPlayer(interstitial, _asset, i);
+            this.createAssetPlayer(interstitial, _asset, i2);
           }
         }
         const asset = interstitial.assetList[assetListIndex];
@@ -25992,16 +24704,16 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     // Interstitial Asset Player control
     getAssetPlayerQueueIndex(assetId) {
       const playerQueue = this.playerQueue;
-      for (let i = 0; i < playerQueue.length; i++) {
-        if (assetId === playerQueue[i].assetId) {
-          return i;
+      for (let i2 = 0; i2 < playerQueue.length; i2++) {
+        if (assetId === playerQueue[i2].assetId) {
+          return i2;
         }
       }
       return -1;
     }
     getAssetPlayer(assetId) {
-      const index2 = this.getAssetPlayerQueueIndex(assetId);
-      return this.playerQueue[index2] || null;
+      const index = this.getAssetPlayerQueueIndex(assetId);
+      return this.playerQueue[index] || null;
     }
     getBufferingPlayer() {
       const {
@@ -26009,9 +24721,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         primaryMedia
       } = this;
       if (primaryMedia) {
-        for (let i = 0; i < playerQueue.length; i++) {
-          if (playerQueue[i].media === primaryMedia) {
-            return playerQueue[i];
+        for (let i2 = 0; i2 < playerQueue.length; i2++) {
+          if (playerQueue[i2].media === primaryMedia) {
+            return playerQueue[i2];
           }
         }
       }
@@ -26370,8 +25082,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       if (!interstitial.assetList.some((asset) => !asset.error)) {
         interstitial.error = error;
       } else {
-        for (let i = assetListIndex; i < interstitial.assetList.length; i++) {
-          this.resetAssetPlayer(interstitial.assetList[i].identifier);
+        for (let i2 = assetListIndex; i2 < interstitial.assetList.length; i2++) {
+          this.resetAssetPlayer(interstitial.assetList[i2].identifier);
         }
       }
       this.updateSchedule(true);
@@ -26439,8 +25151,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         const item = (_this$schedule$items5 = this.schedule.items) == null ? void 0 : _this$schedule$items5[scheduleIndex];
         if (item) {
           if (!this.playingItem && this.timelinePos > item.end) {
-            const index2 = this.schedule.findItemIndexAtTime(this.timelinePos);
-            if (index2 !== scheduleIndex) {
+            const index = this.schedule.findItemIndexAtTime(this.timelinePos);
+            if (index !== scheduleIndex) {
               interstitial.error = new Error(`Interstitial ${assets.length ? "no longer within playback range" : "asset-list is empty"} ${this.timelinePos} ${interstitial}`);
               this.log(interstitial.error.message);
               this.updateSchedule(true);
@@ -26572,9 +25284,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       }
       let timeRange;
       const fragStart = frag.start;
-      for (let i = 0; i < buffered.length; i++) {
-        if (fragStart >= buffered[i].start && fragStart <= buffered[i].end) {
-          timeRange = buffered[i];
+      for (let i2 = 0; i2 < buffered.length; i2++) {
+        if (fragStart >= buffered[i2].start && fragStart <= buffered[i2].end) {
+          timeRange = buffered[i2];
           break;
         }
       }
@@ -26606,16 +25318,16 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         }
         data.endOffsetSubtitles = Math.max(0, endOffsetSubtitles);
         this.tracksBuffered.forEach((buffered) => {
-          for (let i = 0; i < buffered.length; ) {
-            if (buffered[i].end <= endOffsetSubtitles) {
+          for (let i2 = 0; i2 < buffered.length; ) {
+            if (buffered[i2].end <= endOffsetSubtitles) {
               buffered.shift();
               continue;
-            } else if (buffered[i].start < endOffsetSubtitles) {
-              buffered[i].start = endOffsetSubtitles;
+            } else if (buffered[i2].start < endOffsetSubtitles) {
+              buffered[i2].start = endOffsetSubtitles;
             } else {
               break;
             }
-            i++;
+            i2++;
           }
         });
         this.fragmentTracker.removeFragmentsInRange(startOffset, endOffsetSubtitles, PlaylistLevelType.SUBTITLE);
@@ -26857,22 +25569,22 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   var BufferableInstance = class {
     constructor(timeranges) {
       this.buffered = void 0;
-      const getRange = (name, index2, length) => {
-        index2 = index2 >>> 0;
-        if (index2 > length - 1) {
-          throw new DOMException(`Failed to execute '${name}' on 'TimeRanges': The index provided (${index2}) is greater than the maximum bound (${length})`);
+      const getRange = (name, index, length) => {
+        index = index >>> 0;
+        if (index > length - 1) {
+          throw new DOMException(`Failed to execute '${name}' on 'TimeRanges': The index provided (${index}) is greater than the maximum bound (${length})`);
         }
-        return timeranges[index2][name];
+        return timeranges[index][name];
       };
       this.buffered = {
         get length() {
           return timeranges.length;
         },
-        end(index2) {
-          return getRange("end", index2, timeranges.length);
+        end(index) {
+          return getRange("end", index, timeranges.length);
         },
-        start(index2) {
-          return getRange("start", index2, timeranges.length);
+        start(index) {
+          return getRange("start", index, timeranges.length);
         }
       };
     }
@@ -27115,8 +25827,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     }
     log(severity, msg) {
       if (this.verboseLevel >= severity) {
-        const m = typeof msg === "function" ? msg() : msg;
-        logger.log(`${this.time} [${severity}] ${m}`);
+        const m2 = typeof msg === "function" ? msg() : msg;
+        logger.log(`${this.time} [${severity}] ${m2}`);
       }
     }
   };
@@ -27144,8 +25856,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     }
     setStyles(styles) {
       const attribs = ["foreground", "underline", "italics", "background", "flash"];
-      for (let i = 0; i < attribs.length; i++) {
-        const style = attribs[i];
+      for (let i2 = 0; i2 < attribs.length; i2++) {
+        const style = attribs[i2];
         if (styles.hasOwnProperty(style)) {
           this[style] = styles[style];
         }
@@ -27202,28 +25914,28 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       this.currPenState = new PenState();
       this.cueStartTime = null;
       this.logger = void 0;
-      for (let i = 0; i < NR_COLS; i++) {
+      for (let i2 = 0; i2 < NR_COLS; i2++) {
         this.chars.push(new StyledUnicodeChar());
       }
       this.logger = logger2;
     }
     equals(other) {
-      for (let i = 0; i < NR_COLS; i++) {
-        if (!this.chars[i].equals(other.chars[i])) {
+      for (let i2 = 0; i2 < NR_COLS; i2++) {
+        if (!this.chars[i2].equals(other.chars[i2])) {
           return false;
         }
       }
       return true;
     }
     copy(other) {
-      for (let i = 0; i < NR_COLS; i++) {
-        this.chars[i].copy(other.chars[i]);
+      for (let i2 = 0; i2 < NR_COLS; i2++) {
+        this.chars[i2].copy(other.chars[i2]);
       }
     }
     isEmpty() {
       let empty = true;
-      for (let i = 0; i < NR_COLS; i++) {
-        if (!this.chars[i].isEmpty()) {
+      for (let i2 = 0; i2 < NR_COLS; i2++) {
+        if (!this.chars[i2].isEmpty()) {
           empty = false;
           break;
         }
@@ -27251,8 +25963,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     moveCursor(relPos) {
       const newPos = this.pos + relPos;
       if (relPos > 1) {
-        for (let i = this.pos + 1; i < newPos + 1; i++) {
-          this.chars[i].setPenState(this.currPenState);
+        for (let i2 = this.pos + 1; i2 < newPos + 1; i2++) {
+          this.chars[i2].setPenState(this.currPenState);
         }
       }
       this.setCursor(newPos);
@@ -27277,9 +25989,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       this.moveCursor(1);
     }
     clearFromPos(startPos) {
-      let i;
-      for (i = startPos; i < NR_COLS; i++) {
-        this.chars[i].reset();
+      let i2;
+      for (i2 = startPos; i2 < NR_COLS; i2++) {
+        this.chars[i2].reset();
       }
     }
     clear() {
@@ -27293,8 +26005,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     getTextString() {
       const chars = [];
       let empty = true;
-      for (let i = 0; i < NR_COLS; i++) {
-        const char = this.chars[i].uchar;
+      for (let i2 = 0; i2 < NR_COLS; i2++) {
+        const char = this.chars[i2].uchar;
         if (char !== " ") {
           empty = false;
         }
@@ -27319,21 +26031,21 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       this.nrRollUpRows = null;
       this.lastOutputScreen = null;
       this.logger = void 0;
-      for (let i = 0; i < NR_ROWS; i++) {
+      for (let i2 = 0; i2 < NR_ROWS; i2++) {
         this.rows.push(new Row(logger2));
       }
       this.logger = logger2;
     }
     reset() {
-      for (let i = 0; i < NR_ROWS; i++) {
-        this.rows[i].clear();
+      for (let i2 = 0; i2 < NR_ROWS; i2++) {
+        this.rows[i2].clear();
       }
       this.currRow = NR_ROWS - 1;
     }
     equals(other) {
       let equal = true;
-      for (let i = 0; i < NR_ROWS; i++) {
-        if (!this.rows[i].equals(other.rows[i])) {
+      for (let i2 = 0; i2 < NR_ROWS; i2++) {
+        if (!this.rows[i2].equals(other.rows[i2])) {
           equal = false;
           break;
         }
@@ -27341,14 +26053,14 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       return equal;
     }
     copy(other) {
-      for (let i = 0; i < NR_ROWS; i++) {
-        this.rows[i].copy(other.rows[i]);
+      for (let i2 = 0; i2 < NR_ROWS; i2++) {
+        this.rows[i2].copy(other.rows[i2]);
       }
     }
     isEmpty() {
       let empty = true;
-      for (let i = 0; i < NR_ROWS; i++) {
-        if (!this.rows[i].isEmpty()) {
+      for (let i2 = 0; i2 < NR_ROWS; i2++) {
+        if (!this.rows[i2].isEmpty()) {
           empty = false;
           break;
         }
@@ -27390,8 +26102,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         newRow = this.nrRollUpRows - 1;
       }
       if (this.nrRollUpRows && this.currRow !== newRow) {
-        for (let i = 0; i < NR_ROWS; i++) {
-          this.rows[i].clear();
+        for (let i2 = 0; i2 < NR_ROWS; i2++) {
+          this.rows[i2].clear();
         }
         const topRowIndex = this.currRow + 1 - this.nrRollUpRows;
         const lastOutputScreen = this.lastOutputScreen;
@@ -27399,8 +26111,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
           const prevLineTime = lastOutputScreen.rows[topRowIndex].cueStartTime;
           const time = this.logger.time;
           if (prevLineTime !== null && time !== null && prevLineTime < time) {
-            for (let i = 0; i < this.nrRollUpRows; i++) {
-              this.rows[newRow - this.nrRollUpRows + i + 1].copy(lastOutputScreen.rows[topRowIndex + i]);
+            for (let i2 = 0; i2 < this.nrRollUpRows; i2++) {
+              this.rows[newRow - this.nrRollUpRows + i2 + 1].copy(lastOutputScreen.rows[topRowIndex + i2]);
             }
           }
         }
@@ -27454,10 +26166,10 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       const displayText = [];
       let text = "";
       let rowNr = -1;
-      for (let i = 0; i < NR_ROWS; i++) {
-        const rowText = this.rows[i].getTextString();
+      for (let i2 = 0; i2 < NR_ROWS; i2++) {
+        const rowText = this.rows[i2].getTextString();
         if (rowText) {
-          rowNr = i + 1;
+          rowNr = i2 + 1;
           if (asOneRow) {
             displayText.push("Row " + rowNr + ": '" + rowText + "'");
           } else {
@@ -27546,8 +26258,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       this.mode = newMode;
     }
     insertChars(chars) {
-      for (let i = 0; i < chars.length; i++) {
-        this.writeScreen.insertChar(chars[i]);
+      for (let i2 = 0; i2 < chars.length; i2++) {
+        this.writeScreen.insertChar(chars[i2]);
       }
       const screen = this.writeScreen === this.displayedMemory ? "DISP" : "NON_DISP";
       this.logger.log(2, () => screen + ": " + this.writeScreen.getDisplayText(true));
@@ -27699,15 +26411,15 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
      */
     addData(time, byteList) {
       this.logger.time = time;
-      for (let i = 0; i < byteList.length; i += 2) {
-        const a = byteList[i] & 127;
-        const b = byteList[i + 1] & 127;
+      for (let i2 = 0; i2 < byteList.length; i2 += 2) {
+        const a = byteList[i2] & 127;
+        const b = byteList[i2 + 1] & 127;
         let cmdFound = false;
         let charsFound = null;
         if (a === 0 && b === 0) {
           continue;
         } else {
-          this.logger.log(3, () => "[" + numArrayToHexArray([byteList[i], byteList[i + 1]]) + "] -> (" + numArrayToHexArray([a, b]) + ")");
+          this.logger.log(3, () => "[" + numArrayToHexArray([byteList[i2], byteList[i2 + 1]]) + "] -> (" + numArrayToHexArray([a, b]) + ")");
         }
         const cmdHistory = this.cmdHistory;
         const isControlCode = a >= 16 && a <= 31;
@@ -27744,7 +26456,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
           }
         }
         if (!cmdFound && !charsFound) {
-          this.logger.log(2, () => "Couldn't parse cleaned data " + numArrayToHexArray([a, b]) + " orig: " + numArrayToHexArray([byteList[i], byteList[i + 1]]));
+          this.logger.log(2, () => "Couldn't parse cleaned data " + numArrayToHexArray([a, b]) + " orig: " + numArrayToHexArray([byteList[i2], byteList[i2 + 1]]));
         }
       }
     }
@@ -27923,11 +26635,11 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       if (!(case1 || case2)) {
         return false;
       }
-      let index2;
+      let index;
       const bkgData = {};
       if (a === 16 || a === 24) {
-        index2 = Math.floor((b - 32) / 2);
-        bkgData.background = backgroundColors[index2];
+        index = Math.floor((b - 32) / 2);
+        bkgData.background = backgroundColors[index];
         if (b % 2 === 1) {
           bkgData.background = bkgData.background + "_semi";
         }
@@ -27948,8 +26660,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
      * Reset state of parser and its channels.
      */
     reset() {
-      for (let i = 0; i < Object.keys(this.channels).length; i++) {
-        const channel = this.channels[i];
+      for (let i2 = 0; i2 < Object.keys(this.channels).length; i2++) {
+        const channel = this.channels[i2];
         if (channel) {
           channel.reset();
         }
@@ -27960,8 +26672,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
      * Trigger the generation of a cue, and the start of a new one if displayScreens are not empty.
      */
     cueSplitAtTime(t) {
-      for (let i = 0; i < this.channels.length; i++) {
-        const channel = this.channels[i];
+      for (let i2 = 0; i2 < this.channels.length; i2++) {
+        const channel = this.channels[i2];
         if (channel) {
           channel.cueSplitAtTime(t);
         }
@@ -28007,9 +26719,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       return isAllowedValue(AllowedAlignments, value);
     }
     function extend(obj, ...rest) {
-      let i = 1;
-      for (; i < arguments.length; i++) {
-        const cobj = arguments[i];
+      let i2 = 1;
+      for (; i2 < arguments.length; i2++) {
+        const cobj = arguments[i2];
         for (const p in cobj) {
           obj[p] = cobj[p];
         }
@@ -28211,17 +26923,17 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     }
   };
   function parseTimeStamp(input) {
-    function computeSeconds(h, m2, s, f) {
-      return (h | 0) * 3600 + (m2 | 0) * 60 + (s | 0) + parseFloat(f || 0);
+    function computeSeconds(h, m3, s, f) {
+      return (h | 0) * 3600 + (m3 | 0) * 60 + (s | 0) + parseFloat(f || 0);
     }
-    const m = input.match(/^(?:(\d+):)?(\d{2}):(\d{2})(\.\d+)?/);
-    if (!m) {
+    const m2 = input.match(/^(?:(\d+):)?(\d{2}):(\d{2})(\.\d+)?/);
+    if (!m2) {
       return null;
     }
-    if (parseFloat(m[2]) > 59) {
-      return computeSeconds(m[2], m[3], 0, m[4]);
+    if (parseFloat(m2[2]) > 59) {
+      return computeSeconds(m2[2], m2[3], 0, m2[4]);
     }
-    return computeSeconds(m[1], m[2], m[3], m[4]);
+    return computeSeconds(m2[1], m2[2], m2[3], m2[4]);
   }
   var Settings = class {
     constructor() {
@@ -28277,11 +26989,11 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   };
   function parseOptions(input, callback, keyValueDelim, groupDelim) {
     const groups = groupDelim ? input.split(groupDelim) : [input];
-    for (const i in groups) {
-      if (typeof groups[i] !== "string") {
+    for (const i2 in groups) {
+      if (typeof groups[i2] !== "string") {
         continue;
       }
-      const kv = groups[i].split(keyValueDelim);
+      const kv = groups[i2].split(keyValueDelim);
       if (kv.length !== 2) {
         continue;
       }
@@ -28308,9 +27020,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         let vals;
         switch (k) {
           case "region":
-            for (let i = regionList.length - 1; i >= 0; i--) {
-              if (regionList[i].id === v) {
-                settings.set(k, regionList[i].region);
+            for (let i2 = regionList.length - 1; i2 >= 0; i2--) {
+              if (regionList[i2].id === v) {
+                settings.set(k, regionList[i2].region);
                 break;
               }
             }
@@ -28425,8 +27137,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
             return this;
           }
           line = collectNextLine();
-          const m = line.match(/^(ï»¿)?WEBVTT([ \t].*)?$/);
-          if (!(m != null && m[0])) {
+          const m2 = line.match(/^(ï»¿)?WEBVTT([ \t].*)?$/);
+          if (!(m2 != null && m2[0])) {
             throw new Error("Malformed WebVTT signature.");
           }
           _this.state = "HEADER";
@@ -28751,9 +27463,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     }, {});
   }
   function getTextContent(element, trim) {
-    return [].slice.call(element.childNodes).reduce((str, node, i) => {
+    return [].slice.call(element.childNodes).reduce((str, node, i2) => {
       var _node$childNodes;
-      if (node.nodeName === "br" && i) {
+      if (node.nodeName === "br" && i2) {
         return str + "\n";
       }
       if ((_node$childNodes = node.childNodes) != null && _node$childNodes.length) {
@@ -28817,14 +27529,14 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     return seconds;
   }
   function parseHoursMinutesSecondsFrames(timeAttributeValue, rateInfo) {
-    const m = HMSF_REGEX.exec(timeAttributeValue);
-    const frames = (m[4] | 0) + (m[5] | 0) / rateInfo.subFrameRate;
-    return (m[1] | 0) * 3600 + (m[2] | 0) * 60 + (m[3] | 0) + frames / rateInfo.frameRate;
+    const m2 = HMSF_REGEX.exec(timeAttributeValue);
+    const frames = (m2[4] | 0) + (m2[5] | 0) / rateInfo.subFrameRate;
+    return (m2[1] | 0) * 3600 + (m2[2] | 0) * 60 + (m2[3] | 0) + frames / rateInfo.frameRate;
   }
   function parseTimeUnits(timeAttributeValue, rateInfo) {
-    const m = TIME_UNIT_REGEX.exec(timeAttributeValue);
-    const value = Number(m[1]);
-    const unit = m[2];
+    const m2 = TIME_UNIT_REGEX.exec(timeAttributeValue);
+    const value = Number(m2[1]);
+    const unit = m2[2];
     switch (unit) {
       case "h":
         return value * 3600;
@@ -28954,8 +27666,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     }
     addCues(trackName, startTime, endTime, screen, cueRanges) {
       let merged = false;
-      for (let i = cueRanges.length; i--; ) {
-        const cueRange = cueRanges[i];
+      for (let i2 = cueRanges.length; i2--; ) {
+        const cueRange = cueRanges[i2];
         const overlap = intersection(cueRange[0], cueRange[1], startTime, endTime);
         if (overlap >= 0) {
           cueRange[0] = Math.min(cueRange[0], startTime);
@@ -29019,8 +27731,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         media
       } = this;
       if (media) {
-        for (let i = 0; i < media.textTracks.length; i++) {
-          const textTrack = media.textTracks[i];
+        for (let i2 = 0; i2 < media.textTracks.length; i2++) {
+          const textTrack = media.textTracks[i2];
           if (canReuseVttTextTrack(textTrack, {
             name: label,
             lang: language,
@@ -29141,8 +27853,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       }
       const textTracks = media.textTracks;
       if (textTracks) {
-        for (let i = 0; i < textTracks.length; i++) {
-          clearCurrentCues(textTracks[i]);
+        for (let i2 = 0; i2 < textTracks.length; i2++) {
+          clearCurrentCues(textTracks[i2]);
         }
       }
     }
@@ -29160,14 +27872,14 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         if (this.config.renderTextTracksNatively) {
           const media = this.media;
           const inUseTracks = media ? filterSubtitleTracks(media.textTracks) : null;
-          this.tracks.forEach((track, index2) => {
+          this.tracks.forEach((track, index) => {
             let textTrack;
             if (inUseTracks) {
               let inUseTrack = null;
-              for (let i = 0; i < inUseTracks.length; i++) {
-                if (inUseTracks[i] && canReuseVttTextTrack(inUseTracks[i], track)) {
-                  inUseTrack = inUseTracks[i];
-                  inUseTracks[i] = null;
+              for (let i2 = 0; i2 < inUseTracks.length; i2++) {
+                if (inUseTracks[i2] && canReuseVttTextTrack(inUseTracks[i2], track)) {
+                  inUseTrack = inUseTracks[i2];
+                  inUseTracks[i2] = null;
                   break;
                 }
               }
@@ -29405,15 +28117,15 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       if (frag.type === PlaylistLevelType.MAIN && this.closedCaptionsForLevel(frag) === "NONE") {
         return;
       }
-      for (let i = 0; i < samples.length; i++) {
-        const ccBytes = samples[i].bytes;
+      for (let i2 = 0; i2 < samples.length; i2++) {
+        const ccBytes = samples[i2].bytes;
         if (ccBytes) {
           if (!this.cea608Parser1) {
             this.initCea608Parsers();
           }
           const ccdatas = this.extractCea608Data(ccBytes);
-          this.cea608Parser1.addData(samples[i].pts, ccdatas[0]);
-          this.cea608Parser2.addData(samples[i].pts, ccdatas[1]);
+          this.cea608Parser1.addData(samples[i2].pts, ccdatas[0]);
+          this.cea608Parser2.addData(samples[i2].pts, ccdatas[1]);
         }
       }
     }
@@ -31044,8 +29756,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       if (!this.media) {
         return;
       }
-      for (let i = 0; i < textTracks.length; i++) {
-        const textTrack = textTracks[i];
+      for (let i2 = 0; i2 < textTracks.length; i2++) {
+        const textTrack = textTracks[i2];
         if (textTrack.kind === "metadata" && textTrack.label === "id3") {
           sendAddTrackEvent(textTrack, this.media);
           return textTrack;
@@ -31074,14 +29786,14 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       if (!Cue) {
         return;
       }
-      for (let i = 0; i < samples.length; i++) {
-        const type = samples[i].type;
+      for (let i2 = 0; i2 < samples.length; i2++) {
+        const type = samples[i2].type;
         if (type === MetadataSchema.emsg && !enableEmsgMetadataCues || !enableID3MetadataCues) {
           continue;
         }
-        const frames = getId3Frames(samples[i].data);
-        const startTime = samples[i].pts;
-        let endTime = startTime + samples[i].duration;
+        const frames = getId3Frames(samples[i2].data);
+        const startTime = samples[i2].pts;
+        let endTime = startTime + samples[i2].duration;
         if (endTime > MAX_CUE_ENDTIME) {
           endTime = MAX_CUE_ENDTIME;
         }
@@ -31105,8 +29817,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       var _this$id3Track;
       const cues = (_this$id3Track = this.id3Track) == null ? void 0 : _this$id3Track.cues;
       if (cues) {
-        for (let i = cues.length; i--; ) {
-          const cue = cues[i];
+        for (let i2 = cues.length; i2--; ) {
+          const cue = cues[i2];
           if (cue.type === type && cue.startTime < startTime && cue.endTime === MAX_CUE_ENDTIME) {
             cue.endTime = startTime;
           }
@@ -31203,9 +29915,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         var _id3Track$cues;
         if ((_id3Track$cues = id3Track.cues) != null && _id3Track$cues.length) {
           const idsToRemove = Object.keys(dateRangeCuesAppended).filter((id) => !ids.includes(id));
-          for (let i = idsToRemove.length; i--; ) {
+          for (let i2 = idsToRemove.length; i2--; ) {
             var _dateRangeCuesAppende;
-            const id = idsToRemove[i];
+            const id = idsToRemove[i2];
             const cues = (_dateRangeCuesAppende = dateRangeCuesAppended[id]) == null ? void 0 : _dateRangeCuesAppende.cues;
             delete dateRangeCuesAppended[id];
             if (cues) {
@@ -31230,8 +29942,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         return;
       }
       this.id3Track || (this.id3Track = this.createTrack(this.media));
-      for (let i = 0; i < ids.length; i++) {
-        const id = ids[i];
+      for (let i2 = 0; i2 < ids.length; i2++) {
+        const id = ids[i2];
         const dateRange = dateRanges[id];
         const startTime = dateRange.startTime;
         const appendedDateRangeCues = dateRangeCuesAppended[id];
@@ -31688,7 +30400,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
             let message = "no level with compatible codecs found in manifest";
             let reason = message;
             if (data.levels.length) {
-              reason = `one or more CODECS in variant not supported: ${stringify(data.levels.map((level) => level.attrs.CODECS).filter((value, index2, array) => array.indexOf(value) === index2))}`;
+              reason = `one or more CODECS in variant not supported: ${stringify(data.levels.map((level) => level.attrs.CODECS).filter((value, index, array) => array.indexOf(value) === index))}`;
               this.warn(reason);
               message += ` (${reason})`;
             }
@@ -31751,19 +30463,19 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       if (this.steering) {
         levels = this.steering.filterParsedLevels(levels);
         if (levels.length !== unsortedLevels.length) {
-          for (let i = 0; i < unsortedLevels.length; i++) {
-            if (unsortedLevels[i].pathwayId === levels[0].pathwayId) {
-              firstLevelInPlaylist = unsortedLevels[i];
+          for (let i2 = 0; i2 < unsortedLevels.length; i2++) {
+            if (unsortedLevels[i2].pathwayId === levels[0].pathwayId) {
+              firstLevelInPlaylist = unsortedLevels[i2];
               break;
             }
           }
         }
       }
       this._levels = levels;
-      for (let i = 0; i < levels.length; i++) {
-        if (levels[i] === firstLevelInPlaylist) {
+      for (let i2 = 0; i2 < levels.length; i2++) {
+        if (levels[i2] === firstLevelInPlaylist) {
           var _this$hls$userConfig;
-          this._firstLevel = i;
+          this._firstLevel = i2;
           const firstLevelBitrate = firstLevelInPlaylist.bitrate;
           const bandwidthEstimate = this.hls.bandwidthEstimate;
           this.log(`manifest loaded, ${levels.length} level(s) found, first bitrate: ${firstLevelBitrate}`);
@@ -32021,8 +30733,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       if (this._levels.length === 1) {
         return;
       }
-      const levels = this._levels.filter((level, index2) => {
-        if (index2 !== levelIndex) {
+      const levels = this._levels.filter((level, index) => {
+        if (index !== levelIndex) {
           return true;
         }
         if (this.steering) {
@@ -32488,8 +31200,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     onManifestParsed(event, data) {
       let aac = false;
       let heaac = false;
-      for (let i = 0; i < data.levels.length; i++) {
-        const codec = data.levels[i].audioCodec;
+      for (let i2 = 0; i2 < data.levels.length; i2++) {
+        const codec = data.levels[i2].audioCodec;
         if (codec) {
           aac = aac || codec.indexOf("mp4a.40.2") !== -1;
           heaac = heaac || codec.indexOf("mp4a.40.5") !== -1;
@@ -33330,9 +32042,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     loadClear(loadingFrag, encryptedFragments, startFragRequested) {
       if (this.emeController && this.config.emeEnabled && !this.emeController.getSelectedKeySystemFormats().length) {
         if (encryptedFragments.length) {
-          for (let i = 0, l = encryptedFragments.length; i < l; i++) {
-            const frag = encryptedFragments[i];
-            if (loadingFrag.cc <= frag.cc && (!isMediaFragment(loadingFrag) || !isMediaFragment(frag) || loadingFrag.sn < frag.sn) || !startFragRequested && i == l - 1) {
+          for (let i2 = 0, l = encryptedFragments.length; i2 < l; i2++) {
+            const frag = encryptedFragments[i2];
+            if (loadingFrag.cc <= frag.cc && (!isMediaFragment(loadingFrag) || !isMediaFragment(frag) || loadingFrag.sn < frag.sn) || !startFragRequested && i2 == l - 1) {
               return this.emeController.selectKeySystemFormat(frag).then((keySystemFormat) => {
                 if (!this.emeController) {
                   return;
@@ -33847,16 +32559,16 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
             audioCodec,
             videoCodec
           } = levelParsed;
-          for (let i = unknownCodecs.length; i--; ) {
-            const unknownCodec = unknownCodecs[i];
+          for (let i2 = unknownCodecs.length; i2--; ) {
+            const unknownCodec = unknownCodecs[i2];
             if (areCodecsMediaSourceSupported(unknownCodec, "audio", preferManagedMediaSource)) {
               levelParsed.audioCodec = audioCodec = audioCodec ? `${audioCodec},${unknownCodec}` : unknownCodec;
               sampleEntryCodesISO.audio[audioCodec.substring(0, 4)] = 2;
-              unknownCodecs.splice(i, 1);
+              unknownCodecs.splice(i2, 1);
             } else if (areCodecsMediaSourceSupported(unknownCodec, "video", preferManagedMediaSource)) {
               levelParsed.videoCodec = videoCodec = videoCodec ? `${videoCodec},${unknownCodec}` : unknownCodec;
               sampleEntryCodesISO.video[videoCodec.substring(0, 4)] = 2;
-              unknownCodecs.splice(i, 1);
+              unknownCodecs.splice(i2, 1);
             }
           }
         }
@@ -34121,7 +32833,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
      * Get the video-dev/hls.js package version.
      */
     static get version() {
-      return version2;
+      return version;
     }
     /**
      * Check if the required MediaSource Extensions are available.
@@ -34432,8 +33144,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       this.logger.log(`startLoad(${startPosition + (skipSeekToStartPosition ? ", <skip seek to start>" : "")})`);
       this.started = true;
       this.resumeBuffering();
-      for (let i = 0; i < this.networkControllers.length; i++) {
-        this.networkControllers[i].startLoad(startPosition, skipSeekToStartPosition);
+      for (let i2 = 0; i2 < this.networkControllers.length; i2++) {
+        this.networkControllers[i2].startLoad(startPosition, skipSeekToStartPosition);
         if (!this.started || !this.networkControllers) {
           break;
         }
@@ -34445,8 +33157,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     stopLoad() {
       this.logger.log("stopLoad");
       this.started = false;
-      for (let i = 0; i < this.networkControllers.length; i++) {
-        this.networkControllers[i].stopLoad();
+      for (let i2 = 0; i2 < this.networkControllers.length; i2++) {
+        this.networkControllers[i2].stopLoad();
         if (this.started || !this.networkControllers) {
           break;
         }
@@ -34769,9 +33481,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       } = this;
       if (!levels) return 0;
       const len = levels.length;
-      for (let i = 0; i < len; i++) {
-        if (levels[i].maxBitrate >= minAutoBitrate) {
-          return i;
+      for (let i2 = 0; i2 < len; i2++) {
+        if (levels[i2].maxBitrate >= minAutoBitrate) {
+          return i2;
         }
       }
       return 0;
@@ -34792,10 +33504,10 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         maxAutoLevel = autoLevelCapping;
       }
       if (maxHdcpLevel) {
-        for (let i = maxAutoLevel; i--; ) {
-          const hdcpLevel = levels[i].attrs["HDCP-LEVEL"];
+        for (let i2 = maxAutoLevel; i2--; ) {
+          const hdcpLevel = levels[i2].attrs["HDCP-LEVEL"];
           if (hdcpLevel && hdcpLevel <= maxHdcpLevel) {
-            return i;
+            return i2;
           }
         }
       }
