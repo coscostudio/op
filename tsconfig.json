@@ -4,7 +4,8 @@
     "rootDir": ".",
     "baseUrl": "./",
     "paths": {
-      "$utils/*": ["src/utils/*"]
+      "$utils/*": ["src/utils/*"],
+      "@barba/core": ["./node_modules/@barba/core/dist/core/src/src/index"]
     },
     "types": ["@finsweet/ts-utils"]
   }

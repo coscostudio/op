@@ -488,6 +488,15 @@ class LoopSliderInstance {
     this.slides.forEach((slide) => {
       slide.scale = slide.targetScale;
       slide.progress = slide.targetProgress;
+      // Also snap _currentVisibility so applySlideStyles renders the correct blur immediately.
+      // Without this, the animate() lerp loop starts from 0 and blur stays at max
+      // until it has lerped all the way to _targetVisibility.
+      slide.focusNodes.forEach((node) => {
+        const n = node as HTMLElement & { _targetVisibility?: number; _currentVisibility?: number };
+        if (typeof n._targetVisibility !== 'undefined') {
+          n._currentVisibility = n._targetVisibility;
+        }
+      });
       this.applySlideStyles(slide);
     });
   }
@@ -519,6 +528,17 @@ const startSliderAnimationLoop = () => {
     sliderAnimationFrame = window.requestAnimationFrame(loop);
   };
   sliderAnimationFrame = window.requestAnimationFrame(loop);
+};
+
+/**
+ * Re-measure all slider instances and snap to correct state.
+ * Call this after a barba page transition once layout has settled (old container removed),
+ * so focus/blur/scale states reflect the actual viewport positions.
+ */
+export const remeasureLoopSlider = () => {
+  if (!loopSliderInstances.length) return;
+  triggerSliderMeasurements();
+  loopSliderInstances.forEach((instance) => instance.syncToTargets());
 };
 
 export const destroyLoopSlider = () => {
