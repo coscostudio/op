@@ -24,4 +24,7 @@ typings/
 # dotenv environment variables file
 .env
 
+# Claude Code
+CLAUDE.md
+
 # Production files
