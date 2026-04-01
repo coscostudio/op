@@ -1028,6 +1028,41 @@
   init_live_reload();
   var import_core = __toESM(require_barba_umd(), 1);
 
+  // src/utils/greet.ts
+  init_live_reload();
+
+  // node_modules/.pnpm/@finsweet+ts-utils@0.40.0/node_modules/@finsweet/ts-utils/dist/webflow/index.js
+  init_live_reload();
+
+  // node_modules/.pnpm/@finsweet+ts-utils@0.40.0/node_modules/@finsweet/ts-utils/dist/webflow/getPublishDate.js
+  init_live_reload();
+  var getPublishDate = (page = document) => {
+    const publishDatePrefix = "Last Published:";
+    for (const node of page.childNodes) {
+      if (node.nodeType === Node.COMMENT_NODE && node.textContent?.includes(publishDatePrefix)) {
+        const publishDateValue = node.textContent.trim().split(publishDatePrefix)[1];
+        if (publishDateValue)
+          return new Date(publishDateValue);
+      }
+    }
+  };
+
+  // src/utils/greet.ts
+  var greetUser = (name) => {
+    const publishDate = getPublishDate();
+    console.log(`Hello ${name}!`);
+    console.log(
+      `This site was last published on ${publishDate?.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "2-digit"
+      })}.`
+    );
+  };
+
+  // src/features/barbaTransitions.ts
+  init_live_reload();
+
   // node_modules/.pnpm/gsap@3.14.2/node_modules/gsap/index.js
   init_live_reload();
 
@@ -5322,37 +5357,87 @@
   var gsapWithCSS = gsap.registerPlugin(CSSPlugin) || gsap;
   var TweenMaxWithCSS = gsapWithCSS.core.Tween;
 
-  // src/utils/greet.ts
-  init_live_reload();
-
-  // node_modules/.pnpm/@finsweet+ts-utils@0.40.0/node_modules/@finsweet/ts-utils/dist/webflow/index.js
-  init_live_reload();
-
-  // node_modules/.pnpm/@finsweet+ts-utils@0.40.0/node_modules/@finsweet/ts-utils/dist/webflow/getPublishDate.js
-  init_live_reload();
-  var getPublishDate = (page = document) => {
-    const publishDatePrefix = "Last Published:";
-    for (const node of page.childNodes) {
-      if (node.nodeType === Node.COMMENT_NODE && node.textContent?.includes(publishDatePrefix)) {
-        const publishDateValue = node.textContent.trim().split(publishDatePrefix)[1];
-        if (publishDateValue)
-          return new Date(publishDateValue);
+  // src/features/barbaTransitions.ts
+  var PERSISTENT_NAV = ".logo-container, .nav, .nav-wrapper-mobile";
+  (() => {
+    const id = "barba-container-init";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent = '[data-barba="container"] { opacity: 0; }';
+    document.head.appendChild(style);
+  })();
+  var updateBodyTheme = (namespace) => {
+    document.body.classList.toggle("dark", namespace === "about");
+  };
+  var patchMainWrapperCSS = () => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      if (sheet.href) continue;
+      try {
+        const rules = Array.from(sheet.cssRules || []);
+        for (let i = rules.length - 1; i >= 0; i--) {
+          const rule = rules[i];
+          if (rule.selectorText?.includes("main-wrapper")) {
+            const hasDisplayNone = rule.style.display === "none";
+            const hasImportantOpacity = rule.style.getPropertyPriority("opacity") === "important";
+            if (hasDisplayNone || hasImportantOpacity) {
+              sheet.deleteRule(i);
+              sheet.insertRule(".main-wrapper { opacity: 0; }", i);
+            }
+          }
+        }
+      } catch {
       }
     }
   };
-
-  // src/utils/greet.ts
-  var greetUser = (name) => {
-    const publishDate = getPublishDate();
-    console.log(`Hello ${name}!`);
-    console.log(
-      `This site was last published on ${publishDate?.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-      })}.`
-    );
+  var resetInnerMainWrapper = (container) => {
+    const inner = container.querySelector(".main-wrapper");
+    if (inner) gsapWithCSS.set(inner, { opacity: 1 });
   };
+  var fadeTransition = {
+    name: "fade",
+    // ── Hard load ─────────────────────────────────────────────────────────────────
+    // Same 0.4s duration as enter — keeps direct loads feeling identical to barba
+    // entrances so view-specific afterEnter animations fire at the same relative point.
+    async once(data) {
+      gsapWithCSS.set([data.next.container, PERSISTENT_NAV], { opacity: 0 });
+      await gsapWithCSS.to([data.next.container, PERSISTENT_NAV], {
+        opacity: 1,
+        duration: 0.4,
+        ease: "power1.out"
+      });
+    },
+    // ── Fade out leaving page ─────────────────────────────────────────────────────
+    async leave(data) {
+      await gsapWithCSS.to(data.current.container, {
+        opacity: 0,
+        duration: 0.35,
+        ease: "power1.in"
+      });
+    },
+    // ── Prepare incoming page ─────────────────────────────────────────────────────
+    // CSS rule already hides the container — gsap.set here is belt-and-suspenders.
+    // Theme update intentionally omitted here: it moves to enter() so the color
+    // change plays simultaneously with the content fade, not in the blank gap between.
+    beforeEnter(data) {
+      resetInnerMainWrapper(data.next.container);
+      gsapWithCSS.set(data.next.container, { opacity: 0 });
+    },
+    // ── Fade in incoming page ─────────────────────────────────────────────────────
+    // Theme update at the top of enter so the background color change is visually
+    // absorbed by the simultaneous fade — not visible as an isolated background flash.
+    async enter(data) {
+      updateBodyTheme(data.next.namespace);
+      await gsapWithCSS.to(data.next.container, {
+        opacity: 1,
+        duration: 0.4,
+        ease: "power1.out"
+      });
+    }
+  };
+
+  // src/features/barbaViews.ts
+  init_live_reload();
 
   // src/features/loopSlider.ts
   init_live_reload();
@@ -6940,22 +7025,6 @@
       tick();
     };
     initActiveWithRetries();
-  };
-
-  // src/features/nav.ts
-  init_live_reload();
-  var updateNavCurrentState = () => {
-    const currentPath = window.location.pathname;
-    document.querySelectorAll("a[href]").forEach((link) => {
-      const raw = link.getAttribute("href") ?? "";
-      if (!raw || raw.startsWith("#")) return;
-      const linkPath = new URL(link.href, window.location.origin).pathname;
-      if (linkPath === currentPath) {
-        link.classList.add("w--current");
-      } else {
-        link.classList.remove("w--current");
-      }
-    });
   };
 
   // src/features/videoPlayer.ts
@@ -39973,119 +40042,90 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     });
   };
 
-  // src/index.ts
-  var PERSISTENT_NAV = ".logo-container, .nav, .nav-wrapper-mobile";
-  var patchMainWrapperCSS = () => {
-    for (const sheet of Array.from(document.styleSheets)) {
-      if (sheet.href) continue;
-      try {
-        const rules = Array.from(sheet.cssRules || []);
-        for (let i = rules.length - 1; i >= 0; i--) {
-          const rule = rules[i];
-          if (rule.selectorText?.includes("main-wrapper")) {
-            const hasDisplayNone = rule.style.display === "none";
-            const hasImportantOpacity = rule.style.getPropertyPriority("opacity") === "important";
-            if (hasDisplayNone || hasImportantOpacity) {
-              sheet.deleteRule(i);
-              sheet.insertRule(".main-wrapper { opacity: 0; }", i);
-            }
-          }
-        }
-      } catch {
+  // src/features/barbaViews.ts
+  var barbaViews = [
+    // ────────────────────────────────────────────────────────────────────────────
+    // HOME
+    // ────────────────────────────────────────────────────────────────────────────
+    {
+      namespace: "home",
+      beforeLeave() {
+        destroyLoopSlider();
+      },
+      beforeEnter() {
+        document.body.setAttribute("data-loop-slider-snap", "");
+        initLoopSlider();
+        initVideoPlayers();
+      },
+      afterEnter() {
+        requestAnimationFrame(() => {
+          remeasureLoopSlider();
+        });
       }
+    },
+    // ────────────────────────────────────────────────────────────────────────────
+    // ABOUT
+    // Body theme (.dark) is applied by the transition's enter() via updateBodyTheme.
+    // ────────────────────────────────────────────────────────────────────────────
+    {
+      namespace: "about"
+    },
+    // ────────────────────────────────────────────────────────────────────────────
+    // WORK
+    // ────────────────────────────────────────────────────────────────────────────
+    {
+      namespace: "work",
+      beforeEnter({ next }) {
+        const items = next.container.querySelectorAll(".worklist-item");
+        if (items.length) gsapWithCSS.set(items, { opacity: 0, y: 16 });
+      },
+      afterEnter({ next }) {
+        const items = next.container.querySelectorAll(".worklist-item");
+        if (!items.length) return;
+        gsapWithCSS.to(items, {
+          opacity: 1,
+          y: 0,
+          duration: 0.45,
+          ease: "power2.out",
+          stagger: 0.07
+        });
+      }
+    },
+    // ────────────────────────────────────────────────────────────────────────────
+    // CASES (future — case study template page)
+    // ────────────────────────────────────────────────────────────────────────────
+    {
+      namespace: "cases"
     }
+  ];
+
+  // src/features/nav.ts
+  init_live_reload();
+  var updateNavCurrentState = () => {
+    const currentPath = window.location.pathname;
+    document.querySelectorAll("a[href]").forEach((link) => {
+      const raw = link.getAttribute("href") ?? "";
+      if (!raw || raw.startsWith("#")) return;
+      const linkPath = new URL(link.href, window.location.origin).pathname;
+      if (linkPath === currentPath) {
+        link.classList.add("w--current");
+      } else {
+        link.classList.remove("w--current");
+      }
+    });
   };
-  var resetInnerMainWrapper = (container) => {
-    const inner = container.querySelector(".main-wrapper");
-    if (inner) gsapWithCSS.set(inner, { opacity: 1 });
-  };
+
+  // src/index.ts
   window.Webflow ||= [];
   window.Webflow.push(() => {
     greetUser("John Doe");
-    const initialNamespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
     patchMainWrapperCSS();
-    if (initialNamespace === "home") {
-      document.body.setAttribute("data-loop-slider-snap", "");
-      initLoopSlider();
-      initVideoPlayers();
-    }
+    const initialNamespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
+    updateBodyTheme(initialNamespace);
     import_core.default.init({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...{ sync: true },
-      // run leave + enter simultaneously for a seamless crossfade
       preventRunning: true,
-      transitions: [
-        {
-          name: "fade",
-          // ── Initial hard load ─────────────────────────────────────────────────────
-          // barba's `once` fires on first visit instead of leave/enter.
-          // gsap.set hides everything first — fallback in case Webflow CSS opacity:0
-          // rules are missing. Real FOUC prevention requires the CSS in Webflow.
-          async once(data) {
-            gsapWithCSS.set([data.next.container, PERSISTENT_NAV], { opacity: 0 });
-            await new Promise((resolve) => setTimeout(resolve, 400));
-            await gsapWithCSS.to([data.next.container, PERSISTENT_NAV], {
-              opacity: 1,
-              duration: 0.5,
-              ease: "power1.out"
-            });
-          },
-          // ── Subsequent barba navigations ──────────────────────────────────────────
-          // Pin the outgoing container so it overlays the incoming one during the crossfade.
-          // Without this, both containers stack in DOM flow and the page doubles in height.
-          async leave(data) {
-            gsapWithCSS.set(data.current.container, {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%"
-            });
-            await gsapWithCSS.to(data.current.container, {
-              opacity: 0,
-              duration: 0.4,
-              ease: "power1.in"
-            });
-          },
-          beforeEnter(data) {
-            resetInnerMainWrapper(data.next.container);
-            if (data.next.namespace === "home") {
-              gsapWithCSS.set(data.next.container, {
-                opacity: 0,
-                position: "fixed",
-                top: 0,
-                left: 0,
-                width: "100%"
-              });
-              document.body.setAttribute("data-loop-slider-snap", "");
-              initLoopSlider();
-              initVideoPlayers();
-            } else {
-              gsapWithCSS.set(data.next.container, { opacity: 0 });
-            }
-          },
-          async enter(data) {
-            await gsapWithCSS.to(data.next.container, {
-              opacity: 1,
-              duration: 0.4,
-              ease: "power1.out"
-            });
-          }
-        }
-      ],
-      views: [
-        {
-          namespace: "home",
-          beforeLeave() {
-            destroyLoopSlider();
-          },
-          afterEnter({ next: { container } }) {
-            setTimeout(() => {
-              gsapWithCSS.set(container, { clearProps: "position,top,left,width" });
-              remeasureLoopSlider();
-            }, 0);
-          }
-        }
-      ]
+      transitions: [fadeTransition],
+      views: barbaViews
     });
     import_core.default.hooks.enter(() => {
       window.scrollTo(0, 0);
