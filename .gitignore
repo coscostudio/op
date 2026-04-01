@@ -27,7 +27,10 @@ typings/
 # Claude Code
 CLAUDE.md
 
-#barba.js-info
+# barba.js-info
 barba.js-info.md
+
+# MCP JSON
+.mcp.json
 
 # Production files
