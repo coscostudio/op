@@ -1,7 +1,7 @@
 import gsap from 'gsap';
 
 import { destroyLoopSlider, initLoopSlider, remeasureLoopSlider } from './loopSlider';
-import { initVideoPlayers } from './videoPlayer';
+import { initAboutVideo, initVideoPlayers } from './videoPlayer';
 
 // Minimal barba data shape — avoid importing @barba/core types just for views
 type ViewData = {
@@ -49,6 +49,10 @@ export const barbaViews = [
   // ────────────────────────────────────────────────────────────────────────────
   {
     namespace: 'about',
+
+    beforeEnter() {
+      initAboutVideo();
+    },
   },
 
   // ────────────────────────────────────────────────────────────────────────────
