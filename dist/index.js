@@ -40052,8 +40052,9 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
 
   // src/features/workView.ts
   init_live_reload();
-  var DURATION_FAST = 0.25;
+  var DURATION_FAST = 0.22;
   var DURATION_MED = 0.4;
+  var DURATION_SLOW = 0.55;
   var DURATION_EXPAND = 0.45;
   var EASE_OUT = "power2.out";
   var EASE_IN = "power2.in";
@@ -40061,6 +40062,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   var currentMode = "list";
   var container = null;
   var cleanupFns = [];
+  var itemBorderColor = "";
+  var listBorderColor = "";
   function q(sel) {
     return container ? Array.from(container.querySelectorAll(sel)) : [];
   }
@@ -40068,24 +40071,46 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     return container ? container.querySelector(sel) : null;
   }
   function setActiveToggle(mode) {
-    const toggles = q(".view-toggle");
-    toggles.forEach((el) => {
-      const trigger = el.getAttribute("viewTrigger");
-      if (trigger === mode) {
-        el.classList.add("is-active");
-      } else {
-        el.classList.remove("is-active");
-      }
+    q(".view-toggle").forEach((el) => {
+      el.classList.toggle("is-active", el.getAttribute("viewTrigger") === mode);
     });
+  }
+  function hideBorders(duration = DURATION_SLOW) {
+    const items = q(".worklist-item");
+    const list = qs(".worklist");
+    if (items.length) gsapWithCSS.to(items, { borderBottomColor: "rgba(0,0,0,0)", duration, ease: EASE_INOUT });
+    if (list) gsapWithCSS.to(list, { borderTopColor: "rgba(0,0,0,0)", duration, ease: EASE_INOUT });
+  }
+  function showBorders(duration = DURATION_SLOW) {
+    const items = q(".worklist-item");
+    const list = qs(".worklist");
+    if (items.length) {
+      gsapWithCSS.to(items, {
+        borderBottomColor: itemBorderColor,
+        duration,
+        ease: EASE_INOUT,
+        onComplete: () => {
+          gsapWithCSS.set(items, { clearProps: "borderBottomColor" });
+        }
+      });
+    }
+    if (list) {
+      gsapWithCSS.to(list, {
+        borderTopColor: listBorderColor,
+        duration,
+        ease: EASE_INOUT,
+        onComplete: () => {
+          gsapWithCSS.set(list, { clearProps: "borderTopColor" });
+        }
+      });
+    }
   }
   function expandWorklistExpand(items, onComplete) {
     if (!items.length) {
       onComplete?.();
       return;
     }
-    items.forEach((el) => {
-      gsapWithCSS.set(el, { display: "flex", height: 0, opacity: 0, overflow: "hidden" });
-    });
+    items.forEach((el) => gsapWithCSS.set(el, { display: "flex", height: 0, opacity: 0, overflow: "hidden" }));
     gsapWithCSS.to(items, {
       height: "auto",
       opacity: 1,
@@ -40102,55 +40127,82 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       return;
     }
     gsapWithCSS.to(items, {
-      height: 0,
       opacity: 0,
       duration: DURATION_FAST,
       ease: EASE_IN,
       stagger: 0.02,
       onComplete: () => {
-        gsapWithCSS.set(items, { display: "none", clearProps: "height,opacity,overflow" });
-        onComplete?.();
+        gsapWithCSS.to(items, {
+          height: 0,
+          duration: DURATION_FAST,
+          ease: EASE_IN,
+          onComplete: () => {
+            gsapWithCSS.set(items, { display: "none", clearProps: "height,opacity,overflow" });
+            onComplete?.();
+          }
+        });
       }
     });
   }
-  function hideBorders(duration = DURATION_MED) {
+  function staggerExitListItems(onComplete) {
     const items = q(".worklist-item");
-    const list = qs(".worklist");
-    if (items.length) gsapWithCSS.to(items, { borderBottomWidth: 0, duration, ease: EASE_INOUT });
-    if (list) gsapWithCSS.to(list, { borderTopWidth: 0, duration, ease: EASE_INOUT });
+    if (!items.length) {
+      onComplete();
+      return;
+    }
+    gsapWithCSS.to(items, {
+      opacity: 0,
+      y: -8,
+      duration: DURATION_FAST,
+      ease: EASE_IN,
+      stagger: 0.03,
+      onComplete
+    });
   }
-  function showBorders(duration = DURATION_MED) {
-    const items = q(".worklist-item");
-    const list = qs(".worklist");
-    if (items.length) gsapWithCSS.to(items, { borderBottomWidth: "1px", duration, ease: EASE_INOUT });
-    if (list) gsapWithCSS.to(list, { borderTopWidth: "1px", duration, ease: EASE_INOUT });
+  function staggerExitGridItems(onComplete) {
+    const items = q(".workgrid-item");
+    if (!items.length) {
+      onComplete();
+      return;
+    }
+    gsapWithCSS.to(items, {
+      opacity: 0,
+      y: -8,
+      duration: DURATION_FAST,
+      ease: EASE_IN,
+      stagger: 0.03,
+      onComplete
+    });
   }
   function toList(from) {
     const worklist = qs(".component-worklist");
     const workgrid = qs(".component-workgrid");
     const expandPanels = q(".worklist-expand");
     const listItems = q(".worklist-item");
+    showBorders();
     if (from === "grid") {
-      gsapWithCSS.to(workgrid, {
-        opacity: 0,
-        duration: DURATION_MED,
-        ease: EASE_IN,
-        onComplete: () => {
-          gsapWithCSS.set(workgrid, { display: "none" });
-          gsapWithCSS.set(worklist, { display: "block", opacity: 0 });
-          gsapWithCSS.to(worklist, { opacity: 1, duration: DURATION_MED, ease: EASE_OUT });
-          gsapWithCSS.from(listItems, {
-            opacity: 0,
-            y: 12,
-            duration: DURATION_MED,
-            ease: EASE_OUT,
-            stagger: 0.05
-          });
-        }
+      staggerExitGridItems(() => {
+        gsapWithCSS.to(workgrid, {
+          opacity: 0,
+          duration: DURATION_MED,
+          ease: EASE_IN,
+          onComplete: () => {
+            gsapWithCSS.set(workgrid, { display: "none" });
+            gsapWithCSS.set(worklist, { display: "block", opacity: 0 });
+            gsapWithCSS.set(listItems, { opacity: 0, y: 12 });
+            gsapWithCSS.to(worklist, { opacity: 1, duration: DURATION_MED, ease: EASE_OUT });
+            gsapWithCSS.to(listItems, {
+              opacity: 1,
+              y: 0,
+              duration: DURATION_MED,
+              ease: EASE_OUT,
+              stagger: 0.05
+            });
+          }
+        });
       });
     } else if (from === "list-expanded") {
       collapseWorklistExpand(expandPanels);
-      showBorders();
     }
   }
   function toListExpanded(from) {
@@ -40158,23 +40210,35 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     const workgrid = qs(".component-workgrid");
     const expandPanels = q(".worklist-expand");
     if (from === "grid") {
-      gsapWithCSS.to(workgrid, {
-        opacity: 0,
-        duration: DURATION_MED,
-        ease: EASE_IN,
-        onComplete: () => {
-          gsapWithCSS.set(workgrid, { display: "none" });
-          gsapWithCSS.set(worklist, { display: "block", opacity: 0 });
-          gsapWithCSS.to(worklist, {
-            opacity: 1,
-            duration: DURATION_MED,
-            ease: EASE_OUT,
-            onComplete: () => {
-              hideBorders();
-              expandWorklistExpand(expandPanels);
-            }
-          });
-        }
+      staggerExitGridItems(() => {
+        gsapWithCSS.to(workgrid, {
+          opacity: 0,
+          duration: DURATION_MED,
+          ease: EASE_IN,
+          onComplete: () => {
+            gsapWithCSS.set(workgrid, { display: "none" });
+            expandPanels.forEach(
+              (el) => gsapWithCSS.set(el, { display: "flex", height: 0, opacity: 0, overflow: "hidden" })
+            );
+            gsapWithCSS.set(worklist, { display: "block", opacity: 0 });
+            hideBorders(DURATION_MED);
+            gsapWithCSS.to(worklist, {
+              opacity: 1,
+              duration: DURATION_MED,
+              ease: EASE_OUT,
+              onComplete: () => {
+                gsapWithCSS.to(expandPanels, {
+                  height: "auto",
+                  opacity: 1,
+                  duration: DURATION_EXPAND,
+                  ease: EASE_OUT,
+                  stagger: 0.04,
+                  clearProps: "height,overflow"
+                });
+              }
+            });
+          }
+        });
       });
     } else if (from === "list") {
       hideBorders();
@@ -40201,6 +40265,20 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     };
     if (from === "list-expanded") {
       collapseWorklistExpand(expandPanels, () => {
+        staggerExitListItems(() => {
+          gsapWithCSS.to(worklist, {
+            opacity: 0,
+            duration: DURATION_FAST,
+            ease: EASE_IN,
+            onComplete: () => {
+              gsapWithCSS.set(worklist, { display: "none" });
+              showGrid();
+            }
+          });
+        });
+      });
+    } else {
+      staggerExitListItems(() => {
         gsapWithCSS.to(worklist, {
           opacity: 0,
           duration: DURATION_FAST,
@@ -40211,17 +40289,38 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
           }
         });
       });
-    } else {
-      gsapWithCSS.to(worklist, {
-        opacity: 0,
-        duration: DURATION_FAST,
-        ease: EASE_IN,
-        onComplete: () => {
-          gsapWithCSS.set(worklist, { display: "none" });
-          showGrid();
-        }
-      });
     }
+  }
+  var cursorCard = null;
+  var cursorXTo = null;
+  var cursorYTo = null;
+  function initCursorCard() {
+    cursorCard = document.createElement("div");
+    cursorCard.className = "worklist-cursor-card";
+    gsapWithCSS.set(cursorCard, { opacity: 0, scale: 0.9 });
+    document.body.appendChild(cursorCard);
+    cursorXTo = gsapWithCSS.quickTo(cursorCard, "x", { duration: 0.45, ease: "power3" });
+    cursorYTo = gsapWithCSS.quickTo(cursorCard, "y", { duration: 0.45, ease: "power3" });
+  }
+  function destroyCursorCard() {
+    cursorCard?.remove();
+    cursorCard = null;
+    cursorXTo = null;
+    cursorYTo = null;
+  }
+  function dimSiblings(hovered) {
+    const all = q(".worklist-item");
+    all.forEach((el) => {
+      if (el === hovered) {
+        gsapWithCSS.to(el, { opacity: 1, filter: "blur(0px)", duration: 0.25, ease: EASE_OUT });
+      } else {
+        gsapWithCSS.to(el, { opacity: 0.35, filter: "blur(12px)", duration: 0.25, ease: EASE_OUT });
+      }
+    });
+  }
+  function restoreAllItems() {
+    const all = q(".worklist-item");
+    gsapWithCSS.to(all, { opacity: 1, filter: "blur(0px)", duration: 0.3, ease: EASE_OUT });
   }
   function initWorkView(pageContainer) {
     container = pageContainer;
@@ -40229,18 +40328,58 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     const worklist = qs(".component-worklist");
     const workgrid = qs(".component-workgrid");
     const expandPanels = q(".worklist-expand");
+    const listItems = q(".worklist-item");
+    const wl = qs(".worklist");
+    if (listItems.length) itemBorderColor = getComputedStyle(listItems[0]).borderBottomColor;
+    if (wl) listBorderColor = getComputedStyle(wl).borderTopColor;
     if (worklist) gsapWithCSS.set(worklist, { display: "block", opacity: 1 });
     if (workgrid) gsapWithCSS.set(workgrid, { display: "none", opacity: 0 });
     expandPanels.forEach((el) => gsapWithCSS.set(el, { display: "none", height: 0, opacity: 0 }));
     setActiveToggle("list");
+    initCursorCard();
+    const onMouseMove = (e) => {
+      cursorXTo?.(e.clientX);
+      cursorYTo?.(e.clientY);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    const itemHandlers = [];
+    listItems.forEach((item) => {
+      const mediaItem = item.querySelector(".worklist-media-item");
+      const onEnter = () => {
+        if (currentMode === "list") {
+          const bg = mediaItem?.style.backgroundImage ?? "";
+          if (cursorCard && bg && bg !== "none") {
+            cursorCard.style.backgroundImage = bg;
+            gsapWithCSS.to(cursorCard, { opacity: 1, scale: 1, duration: 0.3, ease: EASE_OUT });
+          }
+        } else if (currentMode === "list-expanded") {
+          dimSiblings(item);
+        }
+      };
+      const onLeave = () => {
+        if (currentMode === "list") {
+          gsapWithCSS.to(cursorCard, { opacity: 0, scale: 0.9, duration: 0.2, ease: EASE_IN });
+        }
+      };
+      item.addEventListener("mouseenter", onEnter);
+      item.addEventListener("mouseleave", onLeave);
+      itemHandlers.push({ el: item, enter: onEnter, leave: onLeave });
+    });
+    const worklistEl = qs(".component-worklist");
+    const onWorklistLeave = () => {
+      if (currentMode === "list-expanded") restoreAllItems();
+    };
+    worklistEl?.addEventListener("mouseleave", onWorklistLeave);
     const toggles = q(".view-toggle");
-    const handlers = [];
+    const toggleHandlers = [];
     toggles.forEach((toggle) => {
       const trigger = toggle.getAttribute("viewTrigger");
       if (!trigger) return;
       const handler = (e) => {
         e.preventDefault();
         if (trigger === currentMode) return;
+        gsapWithCSS.to(cursorCard, { opacity: 0, scale: 0.9, duration: 0.15, ease: EASE_IN });
+        restoreAllItems();
         const from = currentMode;
         currentMode = trigger;
         setActiveToggle(trigger);
@@ -40249,15 +40388,26 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         else if (trigger === "grid") toGrid(from);
       };
       toggle.addEventListener("click", handler);
-      handlers.push({ el: toggle, fn: handler });
+      toggleHandlers.push({ el: toggle, fn: handler });
     });
-    cleanupFns = handlers.map(({ el, fn }) => () => el.removeEventListener("click", fn));
+    cleanupFns = [
+      () => document.removeEventListener("mousemove", onMouseMove),
+      ...itemHandlers.map(({ el, enter, leave }) => () => {
+        el.removeEventListener("mouseenter", enter);
+        el.removeEventListener("mouseleave", leave);
+      }),
+      () => worklistEl?.removeEventListener("mouseleave", onWorklistLeave),
+      ...toggleHandlers.map(({ el, fn }) => () => el.removeEventListener("click", fn))
+    ];
   }
   function destroyWorkView() {
     cleanupFns.forEach((fn) => fn());
     cleanupFns = [];
+    destroyCursorCard();
     container = null;
     currentMode = "list";
+    itemBorderColor = "";
+    listBorderColor = "";
   }
 
   // src/features/barbaViews.ts
