@@ -2,6 +2,7 @@ import gsap from 'gsap';
 
 import { destroyLoopSlider, initLoopSlider, remeasureLoopSlider } from './loopSlider';
 import { initAboutVideo, initVideoPlayers } from './videoPlayer';
+import { destroyWorkView, initWorkView } from './workView';
 
 // Minimal barba data shape — avoid importing @barba/core types just for views
 type ViewData = {
@@ -62,25 +63,33 @@ export const barbaViews = [
     namespace: 'work',
 
     beforeEnter({ next }: Pick<ViewData, 'next'>) {
-      // Hide items before the container fades in so they can stagger in
-      // after the page is visible rather than all appearing at once.
-      // The container's CSS opacity:0 rule keeps them invisible during the fade
-      // regardless, but the inline set here prepares them for the stagger.
+      // Hide items before the container fades in so they stagger in after visible.
       const items = next.container.querySelectorAll<HTMLElement>('.worklist-item');
       if (items.length) gsap.set(items, { opacity: 0, y: 16 });
     },
 
     afterEnter({ next }: Pick<ViewData, 'next'>) {
       const items = next.container.querySelectorAll<HTMLElement>('.worklist-item');
-      if (!items.length) return;
+      if (items.length) {
+        gsap.to(items, {
+          opacity: 1,
+          y: 0,
+          duration: 0.45,
+          ease: 'power2.out',
+          stagger: 0.07,
+          onComplete: () => {
+            // Init view switcher after entry animation completes so initial
+            // GSAP sets don't fight the stagger.
+            initWorkView(next.container);
+          },
+        });
+      } else {
+        initWorkView(next.container);
+      }
+    },
 
-      gsap.to(items, {
-        opacity: 1,
-        y: 0,
-        duration: 0.45,
-        ease: 'power2.out',
-        stagger: 0.07,
-      });
+    beforeLeave() {
+      destroyWorkView();
     },
   },
 
