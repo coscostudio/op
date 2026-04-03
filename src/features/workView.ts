@@ -332,6 +332,8 @@ let cursorCard: HTMLDivElement | null = null;
 let cursorXTo: ((...args: any[]) => any) | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cursorYTo: ((...args: any[]) => any) | null = null;
+let lastMouseX = 0;
+let lastMouseY = 0;
 
 function initCursorCard() {
   cursorCard = document.createElement('div');
@@ -340,6 +342,10 @@ function initCursorCard() {
   document.body.appendChild(cursorCard);
   cursorXTo = gsap.quickTo(cursorCard, 'x', { duration: 0.45, ease: 'power3' });
   cursorYTo = gsap.quickTo(cursorCard, 'y', { duration: 0.45, ease: 'power3' });
+}
+
+function snapCursorCardToMouse() {
+  if (cursorCard) gsap.set(cursorCard, { x: lastMouseX, y: lastMouseY });
 }
 
 function destroyCursorCard() {
@@ -419,6 +425,8 @@ export function initWorkView(pageContainer: HTMLElement) {
 
   // Mouse tracking for cursor card — always active, card only shows in list mode
   const onMouseMove = (e: MouseEvent) => {
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
     cursorXTo?.(e.clientX);
     cursorYTo?.(e.clientY);
   };
@@ -435,6 +443,9 @@ export function initWorkView(pageContainer: HTMLElement) {
         // Show cursor card with this item's image
         const bg = mediaItem?.style.backgroundImage ?? '';
         if (cursorCard && bg && bg !== 'none') {
+          // Snap to current mouse position before revealing so it never
+          // drifts in from a stale transform (e.g. after a mode switch)
+          snapCursorCardToMouse();
           cursorCard.style.backgroundImage = bg;
           gsap.to(cursorCard, {
             opacity: 1,
