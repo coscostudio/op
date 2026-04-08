@@ -9,7 +9,7 @@ import gsap from 'gsap';
 //   'grid'          → component-workgrid visible, component-worklist hidden
 //
 // The "active" visual state is a combo class `is-active` on .view-toggle,
-// which matches the :active (pressed) color: #171717.
+// which matches the :active (pressed) color: #eae8e2.
 //
 // Additional hover interactions:
 //   list mode         → mouse-follow card showing the hovered item's media image
@@ -370,8 +370,8 @@ function dimSiblings(hovered: HTMLElement) {
       });
     } else {
       gsap.to(el, {
-        opacity: 0.35,
-        filter: 'blur(12px)',
+        opacity: 0.66,
+        filter: 'blur(4px)',
         duration: 0.25,
         ease: EASE_OUT,
         overwrite: 'auto',
