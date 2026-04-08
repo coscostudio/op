@@ -1,4 +1,5 @@
 import gsap from 'gsap';
+import Hls from 'hls.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Work View Mode Switcher
@@ -8,12 +9,13 @@ import gsap from 'gsap';
 //   'list-expanded' → component-worklist visible, worklist-expand open, no borders
 //   'grid'          → component-workgrid visible, component-worklist hidden
 //
-// The "active" visual state is a combo class `is-active` on .view-toggle,
-// which matches the :active (pressed) color: #eae8e2.
-//
 // Additional hover interactions:
-//   list mode         → mouse-follow card showing the hovered item's media image
-//   list-expanded mode → dim + blur siblings of the hovered .worklist-item
+//   list mode          → mouse-follow cursor card showing the hovered item's media
+//   list-expanded mode → dim + blur siblings of hovered .worklist-item; play expand video
+//   grid mode          → play .work-media-embed video on hovered .workgrid-item
+//
+// Videos inside .work-media-embed use data-src (HLS .m3u8) — initialized lazily
+// via HLS.js on first hover and play/paused on subsequent hovers.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type WorkViewMode = 'list' | 'list-expanded' | 'grid';
@@ -26,13 +28,75 @@ const EASE_OUT = 'power2.out';
 const EASE_IN = 'power2.in';
 const EASE_INOUT = 'power2.inOut';
 
+const STORAGE_KEY = 'work-view-mode';
+
 let currentMode: WorkViewMode = 'list';
 let container: HTMLElement | null = null;
 let cleanupFns: (() => void)[] = [];
 
-// Saved computed border colors so we can tween back to them correctly
 let itemBorderColor = '';
 let listBorderColor = '';
+
+// ─── Storage helpers ──────────────────────────────────────────────────────────
+
+export function getStoredWorkViewMode(): WorkViewMode {
+  try {
+    const stored = sessionStorage.getItem(STORAGE_KEY);
+    if (stored === 'list' || stored === 'list-expanded' || stored === 'grid') return stored;
+  } catch {
+    // sessionStorage unavailable
+  }
+  return 'list';
+}
+
+function saveWorkViewMode(mode: WorkViewMode) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, mode);
+  } catch {
+    // sessionStorage unavailable
+  }
+}
+
+// ─── HLS video helpers ────────────────────────────────────────────────────────
+// Videos inside .work-media-embed use data-src for their HLS URL.
+// We lazily initialize HLS.js on first play and track instances for cleanup.
+
+const workHlsInstances: Hls[] = [];
+
+function initWorkHls(video: HTMLVideoElement, url: string): void {
+  // Already loaded — nothing to do
+  if (video.src || video.getAttribute('data-hls-ready')) return;
+
+  video.setAttribute('data-hls-ready', '1');
+
+  if (Hls.isSupported() && url.includes('.m3u8')) {
+    const hls = new Hls({ startPosition: -1, maxBufferLength: 15 });
+    hls.loadSource(url);
+    hls.attachMedia(video);
+    workHlsInstances.push(hls);
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    // Native HLS (Safari)
+    video.src = url;
+  } else {
+    video.src = url;
+  }
+}
+
+function playWorkVideo(video: HTMLVideoElement): void {
+  const url = video.getAttribute('data-src') || '';
+  if (!url) return;
+  initWorkHls(video, url);
+  video.play().catch(() => {});
+}
+
+function pauseWorkVideo(video: HTMLVideoElement): void {
+  video.pause();
+}
+
+function destroyWorkHls(): void {
+  workHlsInstances.forEach((hls) => hls.destroy());
+  workHlsInstances.length = 0;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -51,7 +115,6 @@ function setActiveToggle(mode: WorkViewMode) {
 }
 
 // ─── Border helpers ───────────────────────────────────────────────────────────
-// Tween border color alpha rather than border width — gives a true fade.
 
 function hideBorders(duration = DURATION_SLOW) {
   const items = q<HTMLElement>('.worklist-item');
@@ -128,7 +191,9 @@ function collapseWorklistExpand(items: HTMLElement[], onComplete?: () => void) {
     return;
   }
   gsap.killTweensOf(items);
-  // Phase 1: fade out content while holding height
+  items.forEach((el) => {
+    el.querySelectorAll<HTMLVideoElement>('.work-media-embed video').forEach(pauseWorkVideo);
+  });
   gsap.to(items, {
     opacity: 0,
     duration: DURATION_FAST,
@@ -136,7 +201,6 @@ function collapseWorklistExpand(items: HTMLElement[], onComplete?: () => void) {
     stagger: 0.02,
     overwrite: 'auto',
     onComplete: () => {
-      // Phase 2: collapse height
       gsap.to(items, {
         height: 0,
         duration: DURATION_FAST,
@@ -205,7 +269,6 @@ function toList(from: WorkViewMode) {
         overwrite: 'auto',
         onComplete: () => {
           gsap.set(workgrid, { display: 'none' });
-          // Expand panels may be open from a prior list-expanded state — hide them before reveal
           gsap.killTweensOf(expandPanels);
           expandPanels.forEach((el) =>
             gsap.set(el, { display: 'none', opacity: 0, height: 0, clearProps: 'overflow' })
@@ -230,8 +293,6 @@ function toList(from: WorkViewMode) {
       });
     });
   } else if (from === 'list-expanded') {
-    // Collapse expand panels first, then restore borders — so borders don't reappear
-    // until the rows have fully compacted
     collapseWorklistExpand(expandPanels, () => {
       showBorders();
     });
@@ -252,18 +313,14 @@ function toListExpanded(from: WorkViewMode) {
         overwrite: 'auto',
         onComplete: () => {
           gsap.set(workgrid, { display: 'none' });
-          // Pre-configure expand panels to be fully visible so the list enters already expanded
           gsap.killTweensOf(expandPanels);
           expandPanels.forEach((el) =>
             gsap.set(el, { display: 'flex', height: 'auto', opacity: 1, clearProps: 'overflow' })
           );
           gsap.set(worklist, { display: 'block', opacity: 0 });
-
-          hideBorders(0); // Instantly hide borders
-
+          hideBorders(0);
           const listItems = q<HTMLElement>('.worklist-item');
           gsap.set(listItems, { opacity: 0, y: 12 });
-
           gsap.to(worklist, {
             opacity: 1,
             duration: DURATION_MED,
@@ -282,7 +339,6 @@ function toListExpanded(from: WorkViewMode) {
       });
     });
   } else if (from === 'list') {
-    // List items stay in place — just open panels and hide borders
     hideBorders();
     expandWorklistExpand(expandPanels);
   }
@@ -292,6 +348,8 @@ function toGrid() {
   const worklist = qs<HTMLElement>('.component-worklist');
   const workgrid = qs<HTMLElement>('.component-workgrid');
   const gridItems = q<HTMLElement>('.workgrid-item');
+
+  q<HTMLVideoElement>('.worklist-expand .work-media-embed video').forEach(pauseWorkVideo);
 
   const showGrid = () => {
     gsap.set(workgrid, { display: 'block', opacity: 0 });
@@ -308,7 +366,6 @@ function toGrid() {
     });
   };
 
-  // For both list and list-expanded: stagger-exit items as-is, no collapse step
   staggerExitListItems(() => {
     gsap.to(worklist, {
       opacity: 0,
@@ -324,10 +381,21 @@ function toGrid() {
 }
 
 // ─── Cursor card (list mode) ──────────────────────────────────────────────────
-// A fixed div that follows the mouse, showing the hovered list item's media image.
-// CSS required in Webflow .global-styles embed (see CLAUDE.md comments in initWorkView).
+// JS-injected fixed div that follows the mouse. Shows the hovered item's media:
+//   - HLS video from .worklist-expand .work-media-embed video[data-src] if available
+//   - Falls back to background image from .worklist-media-item
+//
+// Required CSS in Webflow .global-styles embed:
+//   .worklist-cursor-card { position:fixed; width:320px; height:220px; top:0; left:0;
+//     overflow:hidden; background-size:cover; background-position:center;
+//     border-radius:4px; pointer-events:none; z-index:100;
+//     will-change:transform,opacity; }
+//   .worklist-cursor-card video { width:100%; height:100%; object-fit:cover;
+//     display:block; }
 
 let cursorCard: HTMLDivElement | null = null;
+let cursorVideo: HTMLVideoElement | null = null;
+let cursorHls: Hls | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cursorXTo: ((...args: any[]) => any) | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -338,6 +406,15 @@ let lastMouseY = 0;
 function initCursorCard() {
   cursorCard = document.createElement('div');
   cursorCard.className = 'worklist-cursor-card';
+  cursorVideo = document.createElement('video');
+  cursorVideo.muted = true;
+  cursorVideo.loop = true;
+  cursorVideo.playsInline = true;
+  cursorVideo.preload = 'none';
+  // Hidden by default — only shown when a video URL is available for the hovered item.
+  // Without this, the video element covers the background-image fallback.
+  cursorVideo.style.display = 'none';
+  cursorCard.appendChild(cursorVideo);
   gsap.set(cursorCard, { opacity: 0, scale: 0.9 });
   document.body.appendChild(cursorCard);
   cursorXTo = gsap.quickTo(cursorCard, 'x', { duration: 0.45, ease: 'power3' });
@@ -345,10 +422,41 @@ function initCursorCard() {
 }
 
 function snapCursorCardToMouse() {
-  if (cursorCard) gsap.set(cursorCard, { x: lastMouseX, y: lastMouseY });
+  if (!cursorCard) return;
+  gsap.set(cursorCard, { x: lastMouseX, y: lastMouseY });
+  // Reinitialize quickTo from the snapped position so subsequent moves
+  // tween correctly instead of from a stale internal value.
+  cursorXTo = gsap.quickTo(cursorCard, 'x', { duration: 0.45, ease: 'power3' });
+  cursorYTo = gsap.quickTo(cursorCard, 'y', { duration: 0.45, ease: 'power3' });
+}
+
+function loadCursorVideo(url: string) {
+  if (!cursorVideo) return;
+  if (cursorHls) {
+    cursorHls.destroy();
+    cursorHls = null;
+  }
+  if (Hls.isSupported() && url.includes('.m3u8')) {
+    cursorHls = new Hls({ startPosition: -1, maxBufferLength: 10 });
+    cursorHls.loadSource(url);
+    cursorHls.attachMedia(cursorVideo);
+    cursorHls.on(Hls.Events.MANIFEST_PARSED, () => cursorVideo?.play().catch(() => {}));
+  } else if (cursorVideo.canPlayType('application/vnd.apple.mpegurl')) {
+    cursorVideo.src = url;
+    cursorVideo.play().catch(() => {});
+  }
 }
 
 function destroyCursorCard() {
+  if (cursorHls) {
+    cursorHls.destroy();
+    cursorHls = null;
+  }
+  if (cursorVideo) {
+    cursorVideo.pause();
+    cursorVideo.src = '';
+    cursorVideo = null;
+  }
   cursorCard?.remove();
   cursorCard = null;
   cursorXTo = null;
@@ -381,21 +489,23 @@ function dimSiblings(hovered: HTMLElement) {
 }
 
 function restoreAllItems() {
-  const all = q<HTMLElement>('.worklist-item');
-  gsap.to(all, {
+  gsap.to(q<HTMLElement>('.worklist-item'), {
     opacity: 1,
     filter: 'blur(0px)',
     duration: 0.3,
     ease: EASE_OUT,
     overwrite: 'auto',
   });
+  q<HTMLVideoElement>('.worklist-expand .work-media-embed video').forEach(pauseWorkVideo);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function initWorkView(pageContainer: HTMLElement) {
   container = pageContainer;
-  currentMode = 'list';
+
+  const savedMode = getStoredWorkViewMode();
+  currentMode = savedMode;
 
   const worklist = qs<HTMLElement>('.component-worklist');
   const workgrid = qs<HTMLElement>('.component-workgrid');
@@ -403,27 +513,31 @@ export function initWorkView(pageContainer: HTMLElement) {
   const listItems = q<HTMLElement>('.worklist-item');
   const wl = qs<HTMLElement>('.worklist');
 
-  // Capture border colors before any GSAP manipulation so showBorders can tween back
   if (listItems.length) itemBorderColor = getComputedStyle(listItems[0]).borderBottomColor;
   if (wl) listBorderColor = getComputedStyle(wl).borderTopColor;
 
-  // Ensure initial state
-  if (worklist) gsap.set(worklist, { display: 'block', opacity: 1 });
-  if (workgrid) gsap.set(workgrid, { display: 'none', opacity: 0 });
-  expandPanels.forEach((el) => gsap.set(el, { display: 'none', height: 0, opacity: 0 }));
+  // Apply initial visual state for the restored mode
+  if (savedMode === 'grid') {
+    if (worklist) gsap.set(worklist, { display: 'none', opacity: 0 });
+    if (workgrid) gsap.set(workgrid, { display: 'block', opacity: 1 });
+  } else if (savedMode === 'list-expanded') {
+    if (worklist) gsap.set(worklist, { display: 'block', opacity: 1 });
+    if (workgrid) gsap.set(workgrid, { display: 'none', opacity: 0 });
+    gsap.killTweensOf(expandPanels);
+    expandPanels.forEach((el) =>
+      gsap.set(el, { display: 'flex', height: 'auto', opacity: 1, clearProps: 'overflow' })
+    );
+    hideBorders(0);
+  } else {
+    if (worklist) gsap.set(worklist, { display: 'block', opacity: 1 });
+    if (workgrid) gsap.set(workgrid, { display: 'none', opacity: 0 });
+    expandPanels.forEach((el) => gsap.set(el, { display: 'none', height: 0, opacity: 0 }));
+  }
 
-  setActiveToggle('list');
-
-  // Create cursor card (CSS for .worklist-cursor-card must be in Webflow global styles:
-  //   .worklist-cursor-card { position:fixed; width:320px; height:220px; top:0; left:0;
-  //     background-size:cover; background-position:center; border-radius:4px;
-  //     pointer-events:none; z-index:100; will-change:transform,opacity; }
-  // )
+  setActiveToggle(savedMode);
   initCursorCard();
 
-  // ── Shared event handlers ──────────────────────────────────────────────────
-
-  // Mouse tracking for cursor card — always active, card only shows in list mode
+  // ── Mouse tracking ─────────────────────────────────────────────────────────
   const onMouseMove = (e: MouseEvent) => {
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
@@ -432,36 +546,63 @@ export function initWorkView(pageContainer: HTMLElement) {
   };
   document.addEventListener('mousemove', onMouseMove);
 
-  // Per-item hover handlers for both list and list-expanded interactions
+  // ── Per-item hover: worklist-item ──────────────────────────────────────────
   const itemHandlers: { el: HTMLElement; enter: () => void; leave: () => void }[] = [];
 
   listItems.forEach((item) => {
-    const mediaItem = item.querySelector<HTMLElement>('.worklist-media-item');
+    // The background image (from CMS) is set as inline style on .work-media-embed itself
+    const mediaEmbed = item.querySelector<HTMLElement>('.worklist-expand .work-media-embed');
+    // Video lives inside the expand panel embed — available even when panel is collapsed
+    const expandVideo = item.querySelector<HTMLVideoElement>(
+      '.worklist-expand .work-media-embed video'
+    );
+    const expandVideoUrl = expandVideo?.getAttribute('data-src') || '';
 
     const onEnter = () => {
       if (currentMode === 'list') {
-        // Show cursor card with this item's image
-        const bg = mediaItem?.style.backgroundImage ?? '';
-        if (cursorCard && bg && bg !== 'none') {
-          // Snap to current mouse position before revealing so it never
-          // drifts in from a stale transform (e.g. after a mode switch)
-          snapCursorCardToMouse();
-          cursorCard.style.backgroundImage = bg;
-          gsap.to(cursorCard, {
-            opacity: 1,
-            scale: 1,
-            duration: 0.3,
-            ease: EASE_OUT,
-            overwrite: 'auto',
-          });
+        if (!cursorCard) return;
+        snapCursorCardToMouse();
+
+        if (expandVideoUrl && cursorVideo) {
+          // Show video — hide background, reveal video element
+          cursorCard.style.backgroundImage = '';
+          cursorVideo.style.display = 'block';
+          loadCursorVideo(expandVideoUrl);
+        } else {
+          // Fall back to background image — hide video element so it doesn't cover the bg
+          if (cursorVideo) {
+            cursorVideo.style.display = 'none';
+            cursorVideo.pause();
+            cursorVideo.src = '';
+          }
+          const bg = mediaEmbed?.style.backgroundImage ?? '';
+          if (bg && bg !== 'none') cursorCard.style.backgroundImage = bg;
         }
+
+        gsap.to(cursorCard, {
+          opacity: 1,
+          scale: 1,
+          duration: 0.3,
+          ease: EASE_OUT,
+          overwrite: 'auto',
+        });
       } else if (currentMode === 'list-expanded') {
         dimSiblings(item);
+        if (expandVideo && expandVideoUrl) playWorkVideo(expandVideo);
       }
     };
 
     const onLeave = () => {
       if (currentMode === 'list') {
+        if (cursorHls) {
+          cursorHls.destroy();
+          cursorHls = null;
+        }
+        if (cursorVideo) {
+          cursorVideo.style.display = 'none';
+          cursorVideo.pause();
+          cursorVideo.src = '';
+        }
         gsap.to(cursorCard, {
           opacity: 0,
           scale: 0.9,
@@ -469,8 +610,9 @@ export function initWorkView(pageContainer: HTMLElement) {
           ease: EASE_IN,
           overwrite: 'auto',
         });
+      } else if (currentMode === 'list-expanded') {
+        if (expandVideo) pauseWorkVideo(expandVideo);
       }
-      // list-expanded: restore happens on container mouseleave, not per-item
     };
 
     item.addEventListener('mouseenter', onEnter);
@@ -478,9 +620,40 @@ export function initWorkView(pageContainer: HTMLElement) {
     itemHandlers.push({ el: item, enter: onEnter, leave: onLeave });
   });
 
-  // Restore state when mouse leaves the entire worklist container
+  // ── Per-item hover: workgrid-item ──────────────────────────────────────────
+  const gridItems = q<HTMLElement>('.workgrid-item');
+  const gridItemHandlers: { el: HTMLElement; enter: () => void; leave: () => void }[] = [];
+
+  gridItems.forEach((gridItem) => {
+    const gridVideo = gridItem.querySelector<HTMLVideoElement>('.work-media-embed video');
+    const gridVideoUrl = gridVideo?.getAttribute('data-src') || '';
+
+    const onEnter = () => {
+      if (currentMode !== 'grid' || !gridVideo || !gridVideoUrl) return;
+      playWorkVideo(gridVideo);
+    };
+    const onLeave = () => {
+      if (currentMode !== 'grid' || !gridVideo) return;
+      pauseWorkVideo(gridVideo);
+    };
+
+    gridItem.addEventListener('mouseenter', onEnter);
+    gridItem.addEventListener('mouseleave', onLeave);
+    gridItemHandlers.push({ el: gridItem, enter: onEnter, leave: onLeave });
+  });
+
+  // ── Worklist container leave ───────────────────────────────────────────────
   const worklistEl = qs<HTMLElement>('.component-worklist');
   const onWorklistLeave = () => {
+    if (cursorHls) {
+      cursorHls.destroy();
+      cursorHls = null;
+    }
+    if (cursorVideo) {
+      cursorVideo.style.display = 'none';
+      cursorVideo.pause();
+      cursorVideo.src = '';
+    }
     gsap.to(cursorCard, {
       opacity: 0,
       scale: 0.9,
@@ -488,14 +661,11 @@ export function initWorkView(pageContainer: HTMLElement) {
       ease: EASE_IN,
       overwrite: 'auto',
     });
-    if (currentMode === 'list-expanded') {
-      restoreAllItems();
-    }
+    if (currentMode === 'list-expanded') restoreAllItems();
   };
   worklistEl?.addEventListener('mouseleave', onWorklistLeave);
 
   // ── Toggle clicks ──────────────────────────────────────────────────────────
-
   const toggles = q<HTMLElement>('.view-toggle');
   const toggleHandlers: { el: HTMLElement; fn: (e: Event) => void }[] = [];
 
@@ -507,8 +677,17 @@ export function initWorkView(pageContainer: HTMLElement) {
       e.preventDefault();
       if (trigger === currentMode) return;
 
-      // Hide cursor card and restore items on any mode switch
+      // Hide cursor card
       gsap.killTweensOf(cursorCard);
+      if (cursorHls) {
+        cursorHls.destroy();
+        cursorHls = null;
+      }
+      if (cursorVideo) {
+        cursorVideo.style.display = 'none';
+        cursorVideo.pause();
+        cursorVideo.src = '';
+      }
       gsap.to(cursorCard, {
         opacity: 0,
         scale: 0.9,
@@ -516,10 +695,13 @@ export function initWorkView(pageContainer: HTMLElement) {
         ease: EASE_IN,
         overwrite: 'auto',
       });
+
       restoreAllItems();
+      q<HTMLVideoElement>('.workgrid-item .work-media-embed video').forEach(pauseWorkVideo);
 
       const from = currentMode;
       currentMode = trigger;
+      saveWorkViewMode(trigger);
       setActiveToggle(trigger);
 
       if (trigger === 'list') toList(from);
@@ -538,6 +720,10 @@ export function initWorkView(pageContainer: HTMLElement) {
       el.removeEventListener('mouseenter', enter);
       el.removeEventListener('mouseleave', leave);
     }),
+    ...gridItemHandlers.map(({ el, enter, leave }) => () => {
+      el.removeEventListener('mouseenter', enter);
+      el.removeEventListener('mouseleave', leave);
+    }),
     () => worklistEl?.removeEventListener('mouseleave', onWorklistLeave),
     ...toggleHandlers.map(
       ({ el, fn }) =>
@@ -550,6 +736,7 @@ export function initWorkView(pageContainer: HTMLElement) {
 export function destroyWorkView() {
   cleanupFns.forEach((fn) => fn());
   cleanupFns = [];
+  destroyWorkHls();
   destroyCursorCard();
   container = null;
   currentMode = 'list';

@@ -2,7 +2,7 @@ import gsap from 'gsap';
 
 import { destroyLoopSlider, initLoopSlider, remeasureLoopSlider } from './loopSlider';
 import { initAboutVideo, initVideoPlayers } from './videoPlayer';
-import { destroyWorkView, initWorkView } from './workView';
+import { destroyWorkView, getStoredWorkViewMode, initWorkView } from './workView';
 
 // Minimal barba data shape — avoid importing @barba/core types just for views
 type ViewData = {
@@ -63,28 +63,72 @@ export const barbaViews = [
     namespace: 'work',
 
     beforeEnter({ next }: Pick<ViewData, 'next'>) {
-      // Hide items before the container fades in so they stagger in after visible.
-      const items = next.container.querySelectorAll<HTMLElement>('.worklist-item');
-      if (items.length) gsap.set(items, { opacity: 0, y: 16 });
+      const savedMode = getStoredWorkViewMode();
+
+      // Set the active toggle class immediately so it's correct the moment the
+      // container fades in — not after the stagger animation completes.
+      next.container.querySelectorAll<HTMLElement>('.view-toggle').forEach((el) => {
+        el.classList.toggle('is-active', el.getAttribute('viewTrigger') === savedMode);
+      });
+
+      if (savedMode === 'grid') {
+        // Hide worklist, reveal workgrid at opacity 0 for stagger entry
+        const worklist = next.container.querySelector<HTMLElement>('.component-worklist');
+        const workgrid = next.container.querySelector<HTMLElement>('.component-workgrid');
+        if (worklist) gsap.set(worklist, { display: 'none' });
+        if (workgrid) gsap.set(workgrid, { display: 'block', opacity: 0 });
+        const gridItems = next.container.querySelectorAll<HTMLElement>('.workgrid-item');
+        if (gridItems.length) gsap.set(Array.from(gridItems), { opacity: 0, y: 16 });
+      } else {
+        // list or list-expanded: hide worklist items for stagger, hide expand panels
+        const items = next.container.querySelectorAll<HTMLElement>('.worklist-item');
+        if (items.length) gsap.set(Array.from(items), { opacity: 0, y: 16 });
+        const expandPanels = next.container.querySelectorAll<HTMLElement>('.worklist-expand');
+        expandPanels.forEach((el) => gsap.set(el, { display: 'none', height: 0, opacity: 0 }));
+      }
     },
 
     afterEnter({ next }: Pick<ViewData, 'next'>) {
-      const items = next.container.querySelectorAll<HTMLElement>('.worklist-item');
-      if (items.length) {
-        gsap.to(items, {
-          opacity: 1,
-          y: 0,
-          duration: 0.45,
-          ease: 'power2.out',
-          stagger: 0.07,
-          onComplete: () => {
-            // Init view switcher after entry animation completes so initial
-            // GSAP sets don't fight the stagger.
-            initWorkView(next.container);
-          },
-        });
+      const savedMode = getStoredWorkViewMode();
+
+      if (savedMode === 'grid') {
+        const workgrid = next.container.querySelector<HTMLElement>('.component-workgrid');
+        const gridItems = Array.from(
+          next.container.querySelectorAll<HTMLElement>('.workgrid-item')
+        );
+
+        if (workgrid) {
+          gsap.to(workgrid, { opacity: 1, duration: 0.45, ease: 'power2.out', overwrite: 'auto' });
+        }
+        if (gridItems.length) {
+          gsap.to(gridItems, {
+            opacity: 1,
+            y: 0,
+            duration: 0.45,
+            ease: 'power2.out',
+            stagger: 0.07,
+            onComplete: () => initWorkView(next.container),
+          });
+        } else {
+          initWorkView(next.container);
+        }
       } else {
-        initWorkView(next.container);
+        // list or list-expanded
+        const items = Array.from(
+          next.container.querySelectorAll<HTMLElement>('.worklist-item')
+        );
+        if (items.length) {
+          gsap.to(items, {
+            opacity: 1,
+            y: 0,
+            duration: 0.45,
+            ease: 'power2.out',
+            stagger: 0.07,
+            onComplete: () => initWorkView(next.container),
+          });
+        } else {
+          initWorkView(next.container);
+        }
       }
     },
 
