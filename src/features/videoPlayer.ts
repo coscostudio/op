@@ -1,7 +1,92 @@
 import Hls from 'hls.js';
 
-const setupVideo = (videoElement: HTMLVideoElement, videoUrl: string) => {
+type ManagedVideoController = {
+  hls: Hls | null;
+  videoElement: HTMLVideoElement;
+  isReady: boolean;
+  shouldPlayWhenReady: boolean;
+  isPlaying: boolean;
+};
+
+const managedHomeVideos = new Map<HTMLVideoElement, ManagedVideoController>();
+const managedAboutVideos = new Map<HTMLVideoElement, ManagedVideoController>();
+
+const prepareManagedVideo = (videoElement: HTMLVideoElement) => {
   videoElement.style.display = 'block';
+  videoElement.muted = true;
+  videoElement.autoplay = false;
+  videoElement.loop = true;
+  videoElement.playsInline = true;
+  videoElement.preload = 'auto';
+};
+
+const resetVideoToStart = (videoElement: HTMLVideoElement) => {
+  if (videoElement.readyState === 0) return;
+
+  try {
+    videoElement.currentTime = 0;
+  } catch {
+    // Some browsers can briefly reject currentTime writes before media is seekable.
+  }
+};
+
+const playManagedVideo = (controller: ManagedVideoController) => {
+  controller.shouldPlayWhenReady = true;
+
+  if (!controller.isReady) {
+    return;
+  }
+
+  resetVideoToStart(controller.videoElement);
+  controller.isPlaying = true;
+  controller.videoElement.play().catch((error) => {
+    controller.isPlaying = false;
+    console.error('Auto-play was prevented by the browser:', error);
+  });
+};
+
+const pauseManagedVideo = (controller: ManagedVideoController) => {
+  controller.shouldPlayWhenReady = false;
+
+  if (controller.isPlaying || !controller.videoElement.paused) {
+    controller.videoElement.pause();
+  }
+
+  resetVideoToStart(controller.videoElement);
+  controller.isPlaying = false;
+};
+
+const setupVideo = (
+  videoElement: HTMLVideoElement,
+  videoUrl: string,
+  registry: Map<HTMLVideoElement, ManagedVideoController>
+) => {
+  const existingController = registry.get(videoElement);
+  if (existingController) {
+    pauseManagedVideo(existingController);
+    return existingController;
+  }
+
+  prepareManagedVideo(videoElement);
+
+  const controller: ManagedVideoController = {
+    hls: null,
+    videoElement,
+    isReady: false,
+    shouldPlayWhenReady: false,
+    isPlaying: false,
+  };
+
+  registry.set(videoElement, controller);
+
+  const markReady = () => {
+    controller.isReady = true;
+    if (controller.shouldPlayWhenReady) {
+      playManagedVideo(controller);
+      return;
+    }
+    pauseManagedVideo(controller);
+  };
 
   if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
     const hls = new Hls({
@@ -9,15 +94,12 @@ const setupVideo = (videoElement: HTMLVideoElement, videoUrl: string) => {
       maxBufferLength: 30,
       maxMaxBufferLength: 60,
     });
+    controller.hls = hls;
 
     hls.loadSource(videoUrl);
     hls.attachMedia(videoElement);
 
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      videoElement.play().catch((error) => {
-        console.error('Auto-play was prevented by the browser:', error);
-      });
-    });
+    hls.on(Hls.Events.MANIFEST_PARSED, markReady);
 
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (data.fatal) {
@@ -40,21 +122,32 @@ const setupVideo = (videoElement: HTMLVideoElement, videoUrl: string) => {
   } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
     // Native HLS support (Safari)
     videoElement.src = videoUrl;
-    videoElement.addEventListener('loadedmetadata', () => {
-      videoElement.play().catch((error) => {
-        console.error('Auto-play was prevented by the browser:', error);
-      });
-    });
+    videoElement.addEventListener('loadedmetadata', markReady, { once: true });
   } else {
     // Standard mp4/webm fallback
     videoElement.src = videoUrl;
-    videoElement.play().catch((error) => {
-      console.error('Auto-play was prevented by the browser:', error);
-    });
+    if (videoElement.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      markReady();
+    } else {
+      videoElement.addEventListener('loadedmetadata', markReady, { once: true });
+    }
   }
+
+  return controller;
+};
+
+const destroyManagedVideos = (registry: Map<HTMLVideoElement, ManagedVideoController>) => {
+  registry.forEach((controller) => {
+    pauseManagedVideo(controller);
+    controller.hls?.destroy();
+  });
+
+  registry.clear();
 };
 
 export const initVideoPlayers = () => {
+  destroyManagedVideos(managedHomeVideos);
+
   const projectCards = document.querySelectorAll<HTMLElement>('.home-project-card');
 
   projectCards.forEach((card) => {
@@ -69,16 +162,44 @@ export const initVideoPlayers = () => {
       return;
     }
 
-    setupVideo(videoElement, videoUrl);
+    setupVideo(videoElement, videoUrl, managedHomeVideos);
   });
 };
 
+export const syncHomeVideoPlayback = (
+  videoElement: HTMLVideoElement | null,
+  shouldPlay: boolean
+) => {
+  if (!videoElement) return;
+
+  const controller = managedHomeVideos.get(videoElement);
+  if (!controller) return;
+
+  if (shouldPlay) {
+    playManagedVideo(controller);
+    return;
+  }
+
+  pauseManagedVideo(controller);
+};
+
+export const destroyHomeVideoPlayers = () => {
+  destroyManagedVideos(managedHomeVideos);
+};
+
 export const initAboutVideo = () => {
+  destroyManagedVideos(managedAboutVideos);
+
   const videoElement = document.querySelector<HTMLVideoElement>('video.about-video');
   if (!videoElement) return;
 
   const videoUrl = videoElement.getAttribute('data-src') || videoElement.src;
   if (!videoUrl) return;
 
-  setupVideo(videoElement, videoUrl);
+  const controller = setupVideo(videoElement, videoUrl, managedAboutVideos);
+  playManagedVideo(controller);
+};
+
+export const destroyAboutVideoPlayers = () => {
+  destroyManagedVideos(managedAboutVideos);
 };

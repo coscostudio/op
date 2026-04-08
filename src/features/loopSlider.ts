@@ -1,5 +1,7 @@
 import Lenis from 'lenis';
 
+import { syncHomeVideoPlayback } from './videoPlayer';
+
 const LOOP_SLIDER_SELECTORS = {
   root: ['[data-loop-slider="root"]', '.loop-slider-wrapper', '.slider-section'],
   track: ['[data-loop-slider="track"]', '.loop-slider-track'],
@@ -25,17 +27,22 @@ const LOOP_SLIDER_CONFIG = {
   progressLerp: 0.12,
   minOpacity: 0.66,
   safeZoneBuffer: 0,
+  videoPlayThreshold: 0.12,
+  videoPauseThreshold: 0.02,
 };
 
 type SlideState = {
   node: HTMLElement;
   contentNode: HTMLElement;
+  videoElement: HTMLVideoElement | null;
   blurNode: HTMLElement | null;
   focusNodes: HTMLElement[];
   progress: number;
   targetProgress: number;
   scale: number;
   targetScale: number;
+  videoVisibility: number;
+  isVideoActive: boolean;
 };
 
 const LENIS_STYLE_ID = 'loop-slider-lenis-styles';
@@ -263,6 +270,7 @@ class LoopSliderInstance {
       node,
       contentNode:
         queryElementWithFallback<HTMLElement>(node, LOOP_SLIDER_SELECTORS.content) ?? node,
+      videoElement: node.querySelector<HTMLVideoElement>('video.project-media'),
       blurNode: queryElementWithFallback<HTMLElement>(node, LOOP_SLIDER_SELECTORS.blur),
       focusNodes: (() => {
         const focusTargets: HTMLElement[] = [];
@@ -279,6 +287,8 @@ class LoopSliderInstance {
       targetProgress: 0,
       scale: this.config.baseScale,
       targetScale: this.config.baseScale,
+      videoVisibility: 0,
+      isVideoActive: false,
     }));
 
     this.slides.forEach((slide) => {
@@ -402,6 +412,8 @@ class LoopSliderInstance {
     let nextActiveSlide: SlideState | null = null;
 
     this.slides.forEach((slide) => {
+      slide.videoVisibility = 0;
+
       const scaleTarget = slide.focusNodes[0] || slide.node;
       const scaleRect = scaleTarget.getBoundingClientRect();
       const scaleHeight = scaleRect.height;
@@ -452,6 +464,23 @@ class LoopSliderInstance {
           extendedNode._currentVisibility = nodeVis;
         }
       });
+
+      slide.videoVisibility = Math.max(slide.videoVisibility, scaleVisibility);
+
+      if (slide.videoElement) {
+        if (slide.videoVisibility >= this.config.videoPlayThreshold) {
+          if (!slide.isVideoActive) {
+            syncHomeVideoPlayback(slide.videoElement, true);
+            slide.isVideoActive = true;
+          }
+        } else if (
+          slide.videoVisibility <= this.config.videoPauseThreshold &&
+          slide.isVideoActive
+        ) {
+          syncHomeVideoPlayback(slide.videoElement, false);
+          slide.isVideoActive = false;
+        }
+      }
     });
 
     if (nextActiveSlide && nextActiveSlide !== this.mostVisibleSlide && maxVisibility > 0.5) {
@@ -497,6 +526,12 @@ class LoopSliderInstance {
           n._currentVisibility = n._targetVisibility;
         }
       });
+      slide.videoVisibility = slide.targetProgress;
+      if (slide.videoElement) {
+        const shouldPlay = slide.videoVisibility >= this.config.videoPlayThreshold;
+        syncHomeVideoPlayback(slide.videoElement, shouldPlay);
+        slide.isVideoActive = shouldPlay;
+      }
       this.applySlideStyles(slide);
     });
   }

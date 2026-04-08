@@ -1,7 +1,12 @@
 import gsap from 'gsap';
 
 import { destroyLoopSlider, initLoopSlider, remeasureLoopSlider } from './loopSlider';
-import { initAboutVideo, initVideoPlayers } from './videoPlayer';
+import {
+  destroyAboutVideoPlayers,
+  destroyHomeVideoPlayers,
+  initAboutVideo,
+  initVideoPlayers,
+} from './videoPlayer';
 import { destroyWorkView, getStoredWorkViewMode, initWorkView } from './workView';
 
 // Minimal barba data shape — avoid importing @barba/core types just for views
@@ -19,6 +24,7 @@ export const barbaViews = [
 
     beforeLeave() {
       destroyLoopSlider();
+      destroyHomeVideoPlayers();
     },
 
     beforeEnter() {
@@ -52,7 +58,12 @@ export const barbaViews = [
     namespace: 'about',
 
     beforeEnter() {
+      destroyAboutVideoPlayers();
       initAboutVideo();
+    },
+
+    beforeLeave() {
+      destroyAboutVideoPlayers();
     },
   },
 
@@ -114,9 +125,7 @@ export const barbaViews = [
         }
       } else {
         // list or list-expanded
-        const items = Array.from(
-          next.container.querySelectorAll<HTMLElement>('.worklist-item')
-        );
+        const items = Array.from(next.container.querySelectorAll<HTMLElement>('.worklist-item'));
         if (items.length) {
           gsap.to(items, {
             opacity: 1,

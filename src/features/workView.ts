@@ -93,6 +93,23 @@ function pauseWorkVideo(video: HTMLVideoElement): void {
   video.pause();
 }
 
+function resetWorkVideo(video: HTMLVideoElement): void {
+  pauseWorkVideo(video);
+  try {
+    video.currentTime = 0;
+  } catch {
+    // Ignore reset failures for streams that aren't seekable yet.
+  }
+}
+
+function showWorkVideo(video: HTMLVideoElement): void {
+  video.style.display = 'block';
+}
+
+function hideWorkVideo(video: HTMLVideoElement): void {
+  video.style.display = 'none';
+}
+
 function destroyWorkHls(): void {
   workHlsInstances.forEach((hls) => hls.destroy());
   workHlsInstances.length = 0;
@@ -192,7 +209,10 @@ function collapseWorklistExpand(items: HTMLElement[], onComplete?: () => void) {
   }
   gsap.killTweensOf(items);
   items.forEach((el) => {
-    el.querySelectorAll<HTMLVideoElement>('.work-media-embed video').forEach(pauseWorkVideo);
+    el.querySelectorAll<HTMLVideoElement>('.work-media-embed video').forEach((video) => {
+      resetWorkVideo(video);
+      hideWorkVideo(video);
+    });
   });
   gsap.to(items, {
     opacity: 0,
@@ -349,7 +369,10 @@ function toGrid() {
   const workgrid = qs<HTMLElement>('.component-workgrid');
   const gridItems = q<HTMLElement>('.workgrid-item');
 
-  q<HTMLVideoElement>('.worklist-expand .work-media-embed video').forEach(pauseWorkVideo);
+  q<HTMLVideoElement>('.worklist-expand .work-media-embed video').forEach((video) => {
+    resetWorkVideo(video);
+    hideWorkVideo(video);
+  });
 
   const showGrid = () => {
     gsap.set(workgrid, { display: 'block', opacity: 0 });
@@ -447,14 +470,59 @@ function loadCursorVideo(url: string) {
   }
 }
 
-function destroyCursorCard() {
+function resetCursorMedia() {
   if (cursorHls) {
     cursorHls.destroy();
     cursorHls = null;
   }
   if (cursorVideo) {
+    cursorVideo.style.display = 'none';
     cursorVideo.pause();
+    try {
+      cursorVideo.currentTime = 0;
+    } catch {
+      // Ignore reset failures while media is unloading.
+    }
     cursorVideo.src = '';
+  }
+  if (cursorCard) cursorCard.style.backgroundImage = '';
+}
+
+function showCursorCard() {
+  if (!cursorCard) return;
+  gsap.killTweensOf(cursorCard);
+  gsap.set(cursorCard, { visibility: 'visible' });
+  gsap.to(cursorCard, {
+    autoAlpha: 1,
+    scale: 1,
+    duration: 0.3,
+    ease: EASE_OUT,
+    overwrite: 'auto',
+  });
+}
+
+function hideCursorCard(immediate = false) {
+  if (!cursorCard) return;
+  gsap.killTweensOf(cursorCard);
+  resetCursorMedia();
+
+  if (immediate) {
+    gsap.set(cursorCard, { autoAlpha: 0, scale: 0.9 });
+    return;
+  }
+
+  gsap.to(cursorCard, {
+    autoAlpha: 0,
+    scale: 0.9,
+    duration: 0.2,
+    ease: EASE_IN,
+    overwrite: 'auto',
+  });
+}
+
+function destroyCursorCard() {
+  resetCursorMedia();
+  if (cursorVideo) {
     cursorVideo = null;
   }
   cursorCard?.remove();
@@ -496,7 +564,10 @@ function restoreAllItems() {
     ease: EASE_OUT,
     overwrite: 'auto',
   });
-  q<HTMLVideoElement>('.worklist-expand .work-media-embed video').forEach(pauseWorkVideo);
+  q<HTMLVideoElement>('.worklist-expand .work-media-embed video').forEach((video) => {
+    resetWorkVideo(video);
+    hideWorkVideo(video);
+  });
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -533,6 +604,11 @@ export function initWorkView(pageContainer: HTMLElement) {
     if (workgrid) gsap.set(workgrid, { display: 'none', opacity: 0 });
     expandPanels.forEach((el) => gsap.set(el, { display: 'none', height: 0, opacity: 0 }));
   }
+
+  q<HTMLVideoElement>('.work-media-embed video').forEach((video) => {
+    resetWorkVideo(video);
+    hideWorkVideo(video);
+  });
 
   setActiveToggle(savedMode);
   initCursorCard();
@@ -579,39 +655,24 @@ export function initWorkView(pageContainer: HTMLElement) {
           if (bg && bg !== 'none') cursorCard.style.backgroundImage = bg;
         }
 
-        gsap.to(cursorCard, {
-          opacity: 1,
-          scale: 1,
-          duration: 0.3,
-          ease: EASE_OUT,
-          overwrite: 'auto',
-        });
+        showCursorCard();
       } else if (currentMode === 'list-expanded') {
         dimSiblings(item);
-        if (expandVideo && expandVideoUrl) playWorkVideo(expandVideo);
+        if (expandVideo && expandVideoUrl) {
+          showWorkVideo(expandVideo);
+          playWorkVideo(expandVideo);
+        }
       }
     };
 
     const onLeave = () => {
       if (currentMode === 'list') {
-        if (cursorHls) {
-          cursorHls.destroy();
-          cursorHls = null;
-        }
-        if (cursorVideo) {
-          cursorVideo.style.display = 'none';
-          cursorVideo.pause();
-          cursorVideo.src = '';
-        }
-        gsap.to(cursorCard, {
-          opacity: 0,
-          scale: 0.9,
-          duration: 0.2,
-          ease: EASE_IN,
-          overwrite: 'auto',
-        });
+        hideCursorCard(true);
       } else if (currentMode === 'list-expanded') {
-        if (expandVideo) pauseWorkVideo(expandVideo);
+        if (expandVideo) {
+          resetWorkVideo(expandVideo);
+          hideWorkVideo(expandVideo);
+        }
       }
     };
 
@@ -630,11 +691,13 @@ export function initWorkView(pageContainer: HTMLElement) {
 
     const onEnter = () => {
       if (currentMode !== 'grid' || !gridVideo || !gridVideoUrl) return;
+      showWorkVideo(gridVideo);
       playWorkVideo(gridVideo);
     };
     const onLeave = () => {
       if (currentMode !== 'grid' || !gridVideo) return;
-      pauseWorkVideo(gridVideo);
+      resetWorkVideo(gridVideo);
+      hideWorkVideo(gridVideo);
     };
 
     gridItem.addEventListener('mouseenter', onEnter);
@@ -645,22 +708,7 @@ export function initWorkView(pageContainer: HTMLElement) {
   // ── Worklist container leave ───────────────────────────────────────────────
   const worklistEl = qs<HTMLElement>('.component-worklist');
   const onWorklistLeave = () => {
-    if (cursorHls) {
-      cursorHls.destroy();
-      cursorHls = null;
-    }
-    if (cursorVideo) {
-      cursorVideo.style.display = 'none';
-      cursorVideo.pause();
-      cursorVideo.src = '';
-    }
-    gsap.to(cursorCard, {
-      opacity: 0,
-      scale: 0.9,
-      duration: 0.2,
-      ease: EASE_IN,
-      overwrite: 'auto',
-    });
+    hideCursorCard(true);
     if (currentMode === 'list-expanded') restoreAllItems();
   };
   worklistEl?.addEventListener('mouseleave', onWorklistLeave);
@@ -678,26 +726,13 @@ export function initWorkView(pageContainer: HTMLElement) {
       if (trigger === currentMode) return;
 
       // Hide cursor card
-      gsap.killTweensOf(cursorCard);
-      if (cursorHls) {
-        cursorHls.destroy();
-        cursorHls = null;
-      }
-      if (cursorVideo) {
-        cursorVideo.style.display = 'none';
-        cursorVideo.pause();
-        cursorVideo.src = '';
-      }
-      gsap.to(cursorCard, {
-        opacity: 0,
-        scale: 0.9,
-        duration: 0.15,
-        ease: EASE_IN,
-        overwrite: 'auto',
-      });
+      hideCursorCard(true);
 
       restoreAllItems();
-      q<HTMLVideoElement>('.workgrid-item .work-media-embed video').forEach(pauseWorkVideo);
+      q<HTMLVideoElement>('.workgrid-item .work-media-embed video').forEach((video) => {
+        resetWorkVideo(video);
+        hideWorkVideo(video);
+      });
 
       const from = currentMode;
       currentMode = trigger;
