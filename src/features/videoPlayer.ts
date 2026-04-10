@@ -9,7 +9,16 @@ type ManagedVideoController = {
 };
 
 const managedHomeVideos = new Map<HTMLVideoElement, ManagedVideoController>();
-const managedAboutVideos = new Map<HTMLVideoElement, ManagedVideoController>();
+const managedPageVideos = new Map<HTMLVideoElement, ManagedVideoController>();
+
+const getVideoUrl = (videoElement: HTMLVideoElement) =>
+  videoElement.getAttribute('data-src') || videoElement.currentSrc || videoElement.src || '';
+
+const isHomeManagedVideo = (videoElement: HTMLVideoElement) =>
+  Boolean(videoElement.closest('.home-project-card'));
+
+const isWorkManagedVideo = (videoElement: HTMLVideoElement) =>
+  Boolean(videoElement.closest('.work-media-embed'));
 
 const prepareManagedVideo = (videoElement: HTMLVideoElement) => {
   videoElement.style.display = 'block';
@@ -155,7 +164,7 @@ export const initVideoPlayers = () => {
 
     if (!videoElement) return;
 
-    const videoUrl = videoElement.getAttribute('data-src') || videoElement.src;
+    const videoUrl = getVideoUrl(videoElement);
 
     if (!videoUrl) {
       videoElement.style.display = 'none';
@@ -187,19 +196,22 @@ export const destroyHomeVideoPlayers = () => {
   destroyManagedVideos(managedHomeVideos);
 };
 
-export const initAboutVideo = () => {
-  destroyManagedVideos(managedAboutVideos);
+export const initPageVideoPlayers = (root: ParentNode = document) => {
+  destroyManagedVideos(managedPageVideos);
 
-  const videoElement = document.querySelector<HTMLVideoElement>('video.about-video');
-  if (!videoElement) return;
+  const videoElements = root.querySelectorAll<HTMLVideoElement>('video');
 
-  const videoUrl = videoElement.getAttribute('data-src') || videoElement.src;
-  if (!videoUrl) return;
+  videoElements.forEach((videoElement) => {
+    if (isHomeManagedVideo(videoElement) || isWorkManagedVideo(videoElement)) return;
 
-  const controller = setupVideo(videoElement, videoUrl, managedAboutVideos);
-  playManagedVideo(controller);
+    const videoUrl = getVideoUrl(videoElement);
+    if (!videoUrl) return;
+
+    const controller = setupVideo(videoElement, videoUrl, managedPageVideos);
+    playManagedVideo(controller);
+  });
 };
 
-export const destroyAboutVideoPlayers = () => {
-  destroyManagedVideos(managedAboutVideos);
+export const destroyPageVideoPlayers = () => {
+  destroyManagedVideos(managedPageVideos);
 };

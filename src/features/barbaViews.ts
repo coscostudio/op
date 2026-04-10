@@ -2,9 +2,9 @@ import gsap from 'gsap';
 
 import { destroyLoopSlider, initLoopSlider, remeasureLoopSlider } from './loopSlider';
 import {
-  destroyAboutVideoPlayers,
   destroyHomeVideoPlayers,
-  initAboutVideo,
+  destroyPageVideoPlayers,
+  initPageVideoPlayers,
   initVideoPlayers,
 } from './videoPlayer';
 import { destroyWorkView, getStoredWorkViewMode, initWorkView } from './workView';
@@ -25,14 +25,16 @@ export const barbaViews = [
     beforeLeave() {
       destroyLoopSlider();
       destroyHomeVideoPlayers();
+      destroyPageVideoPlayers();
     },
 
-    beforeEnter() {
+    beforeEnter({ next }: Pick<ViewData, 'next'>) {
       // Snap attribute ensures the slider measures and snaps focus/blur state
       // before anything is visible — prevents all-blurred initial render.
       document.body.setAttribute('data-loop-slider-snap', '');
       initLoopSlider();
       initVideoPlayers();
+      initPageVideoPlayers(next.container);
 
       // NOTE: .home-blurb (position:fixed, mix-blend-mode:difference) is intentionally
       // NOT controlled separately. It fades with the container. The blend mode compositing
@@ -57,13 +59,13 @@ export const barbaViews = [
   {
     namespace: 'about',
 
-    beforeEnter() {
-      destroyAboutVideoPlayers();
-      initAboutVideo();
+    beforeEnter({ next }: Pick<ViewData, 'next'>) {
+      destroyPageVideoPlayers();
+      initPageVideoPlayers(next.container);
     },
 
     beforeLeave() {
-      destroyAboutVideoPlayers();
+      destroyPageVideoPlayers();
     },
   },
 
@@ -74,6 +76,9 @@ export const barbaViews = [
     namespace: 'work',
 
     beforeEnter({ next }: Pick<ViewData, 'next'>) {
+      destroyPageVideoPlayers();
+      initPageVideoPlayers(next.container);
+
       const savedMode = getStoredWorkViewMode();
 
       // Set the active toggle class immediately so it's correct the moment the
@@ -143,6 +148,7 @@ export const barbaViews = [
 
     beforeLeave() {
       destroyWorkView();
+      destroyPageVideoPlayers();
     },
   },
 
@@ -151,5 +157,13 @@ export const barbaViews = [
   // ────────────────────────────────────────────────────────────────────────────
   {
     namespace: 'cases',
+    beforeEnter({ next }: Pick<ViewData, 'next'>) {
+      destroyPageVideoPlayers();
+      initPageVideoPlayers(next.container);
+    },
+
+    beforeLeave() {
+      destroyPageVideoPlayers();
+    },
   },
 ];
