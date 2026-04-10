@@ -104,48 +104,47 @@ const getLoopSliderRoots = () => {
 
 let currentSource: HTMLElement | null = null;
 
+const ACTIVE_CARD_SELECTORS = {
+  source: '.activecard-source',
+  sourceTitle: '.activecard-source-title',
+  sourceSubtitle: '.activecard-source-subtitle',
+  targetTitle: '[data-activecard-target="title"]',
+  targetSubtitle: '[data-activecard-target="subtitle"]',
+} as const;
+
 /**
- * Cleanly swap text and items without FLIP morphs or crossfades.
+ * Swap the shared active card details from the currently active slide source.
  */
 const updateActiveDetailsFromSource = (source: HTMLElement) => {
-  if (source === currentSource) return false;
+  const targetTitle = document.querySelector<HTMLElement>(ACTIVE_CARD_SELECTORS.targetTitle);
+  const targetSubtitle = document.querySelector<HTMLElement>(ACTIVE_CARD_SELECTORS.targetSubtitle);
+  const hasTarget = Boolean(targetTitle || targetSubtitle);
+
+  if (!hasTarget) {
+    return false;
+  }
+
+  const sourceTitle =
+    source.querySelector(ACTIVE_CARD_SELECTORS.sourceTitle)?.textContent?.trim() || '';
+  const sourceSubtitle =
+    source.querySelector(ACTIVE_CARD_SELECTORS.sourceSubtitle)?.textContent?.trim() || '';
+
+  const titleMatches = !targetTitle || targetTitle.textContent === sourceTitle;
+  const subtitleMatches = !targetSubtitle || targetSubtitle.textContent === sourceSubtitle;
+
+  if (source === currentSource && titleMatches && subtitleMatches) {
+    return false;
+  }
+
+  if (targetTitle && targetTitle.textContent !== sourceTitle) {
+    targetTitle.textContent = sourceTitle;
+  }
+
+  if (targetSubtitle && targetSubtitle.textContent !== sourceSubtitle) {
+    targetSubtitle.textContent = sourceSubtitle;
+  }
+
   currentSource = source;
-
-  const targetNormal = document.querySelector('.list-title-normal');
-  const targetSuper = document.querySelector('.list-title-super, .list-subtitle');
-  const servicesOut = document.querySelector('.activeitem-services-list');
-
-  const sourceTitle = source.querySelector('.cms-homepage-title')?.textContent?.trim() || '';
-  const sourceSuper = source.querySelector('.cms-homepage-super')?.textContent?.trim() || '';
-
-  const incomingLabels = Array.from(source.querySelectorAll('.active-services-source-item')).map(
-    (item) => item.textContent?.trim() || ''
-  );
-
-  // Instant update
-  if (targetNormal && targetNormal.textContent !== sourceTitle) {
-    targetNormal.textContent = sourceTitle;
-  }
-
-  if (targetSuper) {
-    const formattedSuper = sourceSuper ? ` // ${sourceSuper}` : '';
-    if (targetSuper.textContent !== formattedSuper) {
-      targetSuper.textContent = formattedSuper;
-    }
-  }
-
-  if (servicesOut) {
-    servicesOut.innerHTML = '';
-    incomingLabels.forEach((label) => {
-      if (!label) return;
-      const li = document.createElement('li');
-      li.className = 'activeitem-service-bubble';
-      const inner = document.createElement('div');
-      inner.textContent = label;
-      li.appendChild(inner);
-      servicesOut.appendChild(li);
-    });
-  }
 
   return true;
 };
@@ -483,9 +482,11 @@ class LoopSliderInstance {
       }
     });
 
-    if (nextActiveSlide && nextActiveSlide !== this.mostVisibleSlide && maxVisibility > 0.5) {
+    if (nextActiveSlide && nextActiveSlide !== this.mostVisibleSlide) {
       this.mostVisibleSlide = nextActiveSlide as SlideState;
-      const source = this.mostVisibleSlide.node.querySelector<HTMLElement>('.cms-homepage-source');
+      const source = this.mostVisibleSlide.node.querySelector<HTMLElement>(
+        ACTIVE_CARD_SELECTORS.source
+      );
       if (source) updateActiveDetailsFromSource(source);
     }
   }
@@ -639,8 +640,10 @@ export const initLoopSlider = () => {
   const initActiveWithRetries = (tries = 40, delay = 50) => {
     let count = 0;
     const tick = () => {
+      if (currentSource) return;
+
       const firstSlide = document.querySelector('.slide-w, .slide');
-      const source = firstSlide?.querySelector('.cms-homepage-source') as HTMLElement | null;
+      const source = firstSlide?.querySelector(ACTIVE_CARD_SELECTORS.source) as HTMLElement | null;
       if (source && updateActiveDetailsFromSource(source)) return;
       count += 1;
       if (count >= tries) return;
