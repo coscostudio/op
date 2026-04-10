@@ -1,6 +1,15 @@
 [mcp_servers.webflow-outsideperspective]
 url = "https://mcp.webflow.com/mcp"
 
+[mcp_servers.webflow-outsideperspective.tools.element_tool]
+approval_mode = "approve"
+
+[mcp_servers.webflow-outsideperspective.tools.style_tool]
+approval_mode = "approve"
+
+[mcp_servers.webflow-outsideperspective.tools.get_more_tools]
+approval_mode = "approve"
+
 [mcp_servers.chrome-devtools]
 command = "npx"
 args = ["@agentdeskai/browser-tools-mcp@latest"]
