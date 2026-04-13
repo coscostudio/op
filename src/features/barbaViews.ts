@@ -1,5 +1,6 @@
 import gsap from 'gsap';
 
+import { destroyCaseSliders, initCaseSliders } from './caseSlider';
 import { destroyLoopSlider, initLoopSlider, remeasureLoopSlider } from './loopSlider';
 import {
   destroyHomeVideoPlayers,
@@ -157,12 +158,15 @@ export const barbaViews = [
   // ────────────────────────────────────────────────────────────────────────────
   {
     namespace: 'cases',
+
     beforeEnter({ next }: Pick<ViewData, 'next'>) {
       destroyPageVideoPlayers();
       initPageVideoPlayers(next.container);
+      initCaseSliders();
     },
 
     beforeLeave() {
+      destroyCaseSliders();
       destroyPageVideoPlayers();
     },
   },
