@@ -16,8 +16,9 @@ import Core from 'smooothy';
 // Required in Webflow global-styles embed:
 //   .case-slider-wrapper img { pointer-events: none; -webkit-user-drag: none; }
 //
-// Interaction model: drag (mouse/touch) + horizontal trackpad swipe only.
-// Vertical mouse-wheel scrolls the page as normal — the slider never hijacks it.
+// Interaction model: drag (mouse/touch) + horizontal trackpad swipe.
+// Horizontal swipe → slider moves, page scroll suppressed.
+// Vertical scroll → page scrolls normally, slider ignores it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type SliderEntry = {
@@ -75,10 +76,19 @@ export function initCaseSliders(): void {
     const onDragStart = (e: DragEvent) => e.preventDefault();
     track.addEventListener('dragstart', onDragStart);
 
+    // When the gesture is predominantly horizontal, prevent the page from
+    // also scrolling vertically. Purely vertical scrolls are left alone so
+    // the page behaves normally when the user isn't swiping the slider.
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) e.preventDefault();
+    };
+    track.addEventListener('wheel', onWheel, { passive: false });
+
     _sliders.push({
       instance,
       destroy: () => {
         track.removeEventListener('dragstart', onDragStart);
+        track.removeEventListener('wheel', onWheel);
         instance.destroy();
       },
     });
