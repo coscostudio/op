@@ -33,7 +33,13 @@ const UTSIDE_CLIP_W_FINAL = UTSIDE_RIGHT - O_RIGHT; // 95.57
 const ERSP_CLIP_X = P_RIGHT; // 139.92
 const ERSP_CLIP_W_FINAL = ERSP_RIGHT - P_RIGHT; // 76.67
 
-const FALLBACK_PRIMARY_ROW = 2; // centre row of 5 — used only if Webflow marker is missing
+const FALLBACK_PRIMARY_ROW = 1; // upper-middle row of 4 — used only if Webflow marker is missing
+const CIRCLE_START_ANGLE = -112.5;
+
+type CircularTextItem = {
+  chars: HTMLSpanElement[];
+  element: HTMLElement;
+};
 
 let activeTl: gsap.core.Timeline | null = null;
 let activeHls: Hls | null = null;
@@ -142,11 +148,81 @@ function cleanup(introEl: HTMLElement): void {
   _introResolve = null;
 }
 
+const clamp = (min: number, value: number, max: number) => Math.min(max, Math.max(min, value));
+
+function readableTangentRotation(angleDeg: number): number {
+  return angleDeg + 90;
+}
+
+function prepareCircularTextItems(words: HTMLElement[]): CircularTextItem[] {
+  return words.map((word) => {
+    const textEl = word.firstElementChild instanceof HTMLElement ? word.firstElementChild : word;
+    const text = (textEl.textContent ?? '').trim();
+    const chars = Array.from(text).map((char) => {
+      const span = document.createElement('span');
+      span.textContent = char === ' ' ? '\u00a0' : char;
+      span.style.display = 'inline-block';
+      span.style.left = '50%';
+      span.style.position = 'absolute';
+      span.style.top = '50%';
+      span.style.transformOrigin = '50% 50%';
+      span.style.whiteSpace = 'pre';
+      return span;
+    });
+
+    textEl.textContent = '';
+    chars.forEach((span) => textEl.appendChild(span));
+
+    gsap.set(textEl, {
+      display: 'block',
+      height: 0,
+      left: 0,
+      position: 'absolute',
+      top: 0,
+      width: 0,
+    });
+
+    return { chars, element: word };
+  });
+}
+
+function positionCircularWords(
+  items: CircularTextItem[],
+  radius: number,
+  angleOffset: number,
+  trackCount = items.length
+): void {
+  const angleStep = 360 / Math.max(trackCount, 1);
+
+  items.forEach((item, i) => {
+    const angle = angleOffset + i * angleStep;
+    const charWidths = item.chars.map((char) => char.offsetWidth || 8);
+    const totalWidth = charWidths.reduce((sum, width) => sum + width, 0);
+    let cursor = -totalWidth / 2;
+
+    item.chars.forEach((char, charIndex) => {
+      const charCenter = cursor + charWidths[charIndex] / 2;
+      const charAngle = angle + (charCenter / radius) * (180 / Math.PI);
+      const radians = (charAngle * Math.PI) / 180;
+
+      gsap.set(char, {
+        rotation: readableTangentRotation(charAngle),
+        x: Math.cos(radians) * radius,
+        xPercent: -50,
+        y: Math.sin(radians) * radius,
+        yPercent: -50,
+      });
+
+      cursor += charWidths[charIndex];
+    });
+  });
+}
+
 function runTimeline(
   introEl: HTMLElement,
   videoEl: HTMLVideoElement,
   videoWrapEl: HTMLElement,
-  logoEl: HTMLElement,
+  logoEl: HTMLElement | null,
   gO: SVGGElement,
   gParen: SVGGElement,
   gClose: SVGGElement,
@@ -154,7 +230,8 @@ function runTimeline(
   erspRect: SVGRectElement,
   rows: HTMLElement[],
   primaryRowIndex: number,
-  primaryWords: HTMLElement[],
+  rowWords: CircularTextItem[][],
+  wrapperW: number,
   wrapperH: number
 ): void {
   const tl = gsap.timeline({
@@ -167,51 +244,116 @@ function runTimeline(
   const EASE_OUT = 'power3.out';
   const EASE_IN_OUT = 'power3.inOut';
   const EASE_IN = 'power3.in';
-  const LOGO_FADE_IN_T = 0.25;
-  const LOGO_FADE_DUR = 0.25;
-  const REVEAL_T = 1.25; // icon → wordmark starts
-  const REVEAL_DUR = 0.65;
-  const TAGLINE_T = 2.7; // previous tagline entry was 1.7s; hold 1s longer
-  const LOGO_FADE_OUT_DUR = 0.25;
-  const WORD_FADE_DUR = 0.22;
-  const WORD_STAGGER = 0.5;
-  const OTHER_ROWS_T = TAGLINE_T + primaryWords.length * WORD_STAGGER;
-  const EXPAND_DUR = 1;
-  const FINAL_LEAVE_T = OTHER_ROWS_T + EXPAND_DUR;
-  const FINAL_LEAVE_DUR = 0.65;
-  const VIDEO_UNBLUR_T = TAGLINE_T;
-  const VIDEO_UNBLUR_DUR = FINAL_LEAVE_T + FINAL_LEAVE_DUR - VIDEO_UNBLUR_T;
+  // Icon visible from the start; wordmark reveals almost immediately
+  const REVEAL_T = 0.5;
+  const REVEAL_DUR = 0.5;
+  // Tagline starts shortly after wordmark settles
+  const TAGLINE_T = 1.3;
+  const CHAR_FADE_DUR = 0.16;
+  const CHAR_STAGGER = 0.025;
+  const primaryWords = rowWords[primaryRowIndex] ?? [];
+  const totalPrimaryChars = primaryWords.reduce((sum, w) => sum + w.chars.length, 0);
+  const DUPLICATE_REVEAL_T = TAGLINE_T + totalPrimaryChars * CHAR_STAGGER + 0.1;
+  const SPIN_REVEAL_T = DUPLICATE_REVEAL_T + 0.18;
 
-  const rowH = rows[primaryRowIndex]?.offsetHeight || 0;
-  const rowSpread = Math.max(0, wrapperH / 2 - rowH / 2);
-  const maxDistanceFromCenter = Math.max(primaryRowIndex, rows.length - 1 - primaryRowIndex, 1);
-  const expandedY = rows.map((_, i) => {
-    const distanceFromCenter = i - primaryRowIndex;
-    return (distanceFromCenter / maxDistanceFromCenter) * rowSpread;
-  });
+  // Each ring runs its full spin-expand journey (two phases) as one sub-timeline,
+  // echo-staggered by distance from center ring so outer rings start slightly later
+  const SPIN_REVEAL_DUR = 1.18;
+  const FINAL_LEAVE_DUR = 1.55;
+  const RING_STAGGER = 0.16;
+  const maxDistFromCenter = Math.max(...rows.map((_, i) => Math.abs(i - primaryRowIndex)));
+  const PHASE_2_T = SPIN_REVEAL_T + SPIN_REVEAL_DUR;
+  const PHASE_2_DUR = maxDistFromCenter * RING_STAGGER + FINAL_LEAVE_DUR;
+  const VIDEO_FILL_T = PHASE_2_T + 0.22;
+  const PHASE_2_END_T = PHASE_2_T + PHASE_2_DUR;
+  const VIDEO_FILL_DUR = PHASE_2_END_T - VIDEO_FILL_T;
+  const LOGO_LEAVE_T = PHASE_2_T + 0.06;
+  const LOGO_LEAVE_DUR = 0.78;
+  // Video grows just behind the second ring expansion, then lands with the ripple.
+  const FILL_T = VIDEO_FILL_T + VIDEO_FILL_DUR;
 
-  // ── Video: stay heavily blurred until the exit, then resolve late ──────────
-  tl.set(videoEl, { filter: 'blur(120px)' }, 0);
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  const wrapRect = videoWrapEl.getBoundingClientRect();
+  const measuredVideoHeight =
+    wrapRect.height || videoWrapEl.offsetHeight || Math.min(viewportW, viewportH) * 0.32;
+  const measuredVideoWidth = wrapRect.width || videoWrapEl.offsetWidth || measuredVideoHeight;
+  const initialVideoSize = Math.min(measuredVideoHeight, measuredVideoWidth, viewportW, viewportH);
+  const minDimension = Math.min(wrapperW, wrapperH);
+  const baseRadius = clamp(150, minDimension * 0.29, 300);
+  const tightRingGap = clamp(18, minDimension * 0.035, 40);
+  const ringGap = clamp(70, minDimension * 0.12, 150);
+  const offscreenRadius = Math.hypot(wrapperW, wrapperH) / 2 + ringGap * 2;
+  const finalVideoWidth = Math.hypot(viewportW, viewportH) * 1.08;
+
+  const ringStates = rowWords.map(() => ({
+    angleOffset: CIRCLE_START_ANGLE,
+    radius: baseRadius,
+  }));
+  const applyCircularLayout = () => {
+    rowWords.forEach((words, i) => {
+      const state = ringStates[i];
+      if (!state) return;
+      positionCircularWords(words, state.radius, state.angleOffset, primaryWords.length);
+    });
+  };
+
+  applyCircularLayout();
+
+  // ── Video: soft circular mask, grows in sync with ring expansion ──────────
+  tl.set(
+    videoWrapEl,
+    {
+      borderRadius: 0,
+      maskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
+      WebkitMaskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
+      overflow: 'visible',
+      height: initialVideoSize,
+      width: initialVideoSize,
+      willChange: 'width, height, transform',
+    },
+    0
+  );
+  tl.set(videoEl, { filter: 'blur(120px)', scale: 1, transformOrigin: '50% 50%' }, 0);
+
+  // Unblur from tagline reveal through the full ring expansion
   tl.to(
     videoEl,
-    {
-      filter: 'blur(0px)',
-      duration: VIDEO_UNBLUR_DUR,
-      ease: 'power2.out',
-    },
-    VIDEO_UNBLUR_T
-  );
-  // Slow push-in during grid expand + exit
-  tl.to(
-    videoWrapEl,
-    { scale: 1.35, duration: FINAL_LEAVE_DUR + 1.5, ease: EASE_OUT },
-    OTHER_ROWS_T
+    { filter: 'blur(0px)', duration: FILL_T - TAGLINE_T, ease: 'power2.out' },
+    TAGLINE_T
   );
 
-  // ── Logo: fade in, then icon → wordmark ────────────────────────────────────
-  tl.to(logoEl, { opacity: 1, duration: LOGO_FADE_DUR, ease: EASE_OUT }, LOGO_FADE_IN_T);
-  // O slides left, (P) slides right a touch, ) slides far right ("pushed" by erspective),
-  // utside clip grows right, erspective clip grows right.
+  // Mask opens and wrapper expands to fill screen in sync with ring spin-expand
+  const maskState = { inner: 40, outer: 72 };
+  const updateMask = () => {
+    const grad = `radial-gradient(circle, black ${maskState.inner.toFixed(1)}%, transparent ${maskState.outer.toFixed(1)}%)`;
+    videoWrapEl.style.maskImage = grad;
+    (videoWrapEl.style as CSSStyleDeclaration & { WebkitMaskImage: string }).WebkitMaskImage = grad;
+  };
+  tl.to(
+    maskState,
+    {
+      inner: 100,
+      outer: 150,
+      duration: VIDEO_FILL_DUR,
+      ease: 'power2.inOut',
+      onUpdate: updateMask,
+    },
+    VIDEO_FILL_T
+  );
+  tl.to(
+    videoWrapEl,
+    {
+      height: finalVideoWidth,
+      width: finalVideoWidth,
+      duration: VIDEO_FILL_DUR,
+      ease: 'power2.inOut',
+    },
+    VIDEO_FILL_T
+  );
+  tl.to(videoEl, { scale: 1.35, duration: VIDEO_FILL_DUR, ease: 'power2.out' }, VIDEO_FILL_T);
+
+  // ── Logo: O(P) icon visible from start; wordmark reveals early ────────────
   tl.to(gO, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
   tl.to(gParen, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
   tl.to(gClose, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
@@ -225,46 +367,90 @@ function runTimeline(
     { attr: { width: ERSP_CLIP_W_FINAL }, duration: REVEAL_DUR, ease: EASE_OUT },
     REVEAL_T
   );
-
-  // ── Logo: quick fade as the initial tagline row enters ─────────────────────
-  tl.to(logoEl, { opacity: 0, duration: LOGO_FADE_OUT_DUR, ease: EASE_IN }, TAGLINE_T);
-
-  // ── Tagline: primary row words stagger-fade in first ───────────────────────
-  primaryWords.forEach((word, i) => {
+  if (logoEl) {
     tl.to(
-      word,
-      { opacity: 1, duration: WORD_FADE_DUR, ease: EASE_OUT },
-      TAGLINE_T + i * WORD_STAGGER
+      logoEl,
+      { opacity: 0, scale: 0.92, duration: LOGO_LEAVE_DUR, ease: EASE_IN },
+      LOGO_LEAVE_T + 0.1
+    );
+  }
+  tl.to(gO, { x: O_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, LOGO_LEAVE_T);
+  tl.to(gParen, { x: PAREN_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, LOGO_LEAVE_T);
+  tl.to(gClose, { x: CLOSE_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, LOGO_LEAVE_T);
+  tl.to(
+    utsideRect,
+    {
+      attr: { x: UTSIDE_CLIP_X_ICON, width: 0 },
+      duration: LOGO_LEAVE_DUR,
+      ease: EASE_IN_OUT,
+    },
+    LOGO_LEAVE_T
+  );
+  tl.to(
+    erspRect,
+    { attr: { width: 0 }, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT },
+    LOGO_LEAVE_T
+  );
+
+  // ── Tagline: primary ring chars stagger in letter by letter ───────────────
+  let charIndex = 0;
+  primaryWords.forEach((word) => {
+    word.chars.forEach((char) => {
+      tl.to(
+        char,
+        { opacity: 1, duration: CHAR_FADE_DUR, ease: EASE_OUT },
+        TAGLINE_T + charIndex * CHAR_STAGGER
+      );
+      charIndex += 1;
+    });
+  });
+
+  // ── Tagline: duplicates appear stacked, then echo ripple outward ──────────
+  const duplicateIndices = rows.map((_, i) => i).filter((i) => i !== primaryRowIndex);
+  const duplicateRankByIndex = new Map(duplicateIndices.map((index, rank) => [index, rank + 1]));
+  // Phase 1 uses a tighter gap so rings start close together before spreading
+  const expandedRadii = rows.map(
+    (_, i) => baseRadius + (duplicateRankByIndex.get(i) ?? 0) * tightRingGap
+  );
+
+  rows.forEach((row, i) => {
+    if (i === primaryRowIndex) return;
+    tl.to(row, { opacity: 1, duration: 0.22, ease: EASE_OUT }, DUPLICATE_REVEAL_T);
+  });
+
+  rows.forEach((row, i) => {
+    const rank = duplicateRankByIndex.get(i) ?? 0;
+    const dist = Math.abs(i - primaryRowIndex);
+    const direction = i < primaryRowIndex ? -1 : 1;
+    const ringStartT = SPIN_REVEAL_T + dist * RING_STAGGER;
+    const phase1Angle = CIRCLE_START_ANGLE + direction * rank * 13;
+    const phase2Radius = offscreenRadius + Math.pow(rank + 1, 1.72) * ringGap;
+    const phase2Angle = phase1Angle + direction * (42 + rank * 18);
+
+    const ringTl = gsap.timeline({ onUpdate: applyCircularLayout });
+    ringTl.to(ringStates[i], {
+      radius: expandedRadii[i] ?? baseRadius,
+      angleOffset: phase1Angle,
+      duration: SPIN_REVEAL_DUR,
+      ease: EASE_IN_OUT,
+    });
+    ringTl.to(ringStates[i], {
+      radius: phase2Radius,
+      angleOffset: phase2Angle,
+      duration: FINAL_LEAVE_DUR,
+      ease: 'power4.in',
+    });
+    tl.add(ringTl, ringStartT);
+
+    tl.to(
+      row,
+      { opacity: 0, duration: FINAL_LEAVE_DUR * 0.8, ease: EASE_IN },
+      ringStartT + SPIN_REVEAL_DUR
     );
   });
 
-  // ── Tagline: other rows fade in underneath, then expand from center ────────
-  const otherRows = rows.filter((_, i) => i !== primaryRowIndex);
-  tl.to(otherRows, { opacity: 1, duration: 0.25, ease: EASE_OUT }, OTHER_ROWS_T);
-  tl.to(
-    rows,
-    {
-      y: (i) => expandedY[i] ?? 0,
-      duration: EXPAND_DUR,
-      ease: EASE_IN_OUT,
-      stagger: 0.035,
-    },
-    OTHER_ROWS_T
-  );
-
-  // ── Exit: overlay fade is locked to the final tagline leave motion ─────────
-  tl.addLabel('taglineLeave', FINAL_LEAVE_T);
-  rows.forEach((row, i) => {
-    const distanceFromCenter = i - primaryRowIndex;
-    const exitY =
-      distanceFromCenter < 0
-        ? (expandedY[i] ?? 0) - wrapperH
-        : distanceFromCenter >= 0
-          ? (expandedY[i] ?? 0) + wrapperH
-          : 0;
-    tl.to(row, { y: exitY, duration: FINAL_LEAVE_DUR, ease: EASE_IN }, 'taglineLeave');
-  });
-  tl.to(introEl, { opacity: 0, duration: FINAL_LEAVE_DUR, ease: EASE_IN }, 'taglineLeave');
+  // ── Overlay fade: second expansion, video fill, text ripple, and logo leave clear together
+  tl.to(introEl, { opacity: 0, duration: 0.62, ease: EASE_IN }, FILL_T - 0.48);
 }
 
 export function initIntroSequence(): void {
@@ -280,7 +466,9 @@ export function initIntroSequence(): void {
   const textWrapper = introEl.querySelector<HTMLElement>('.intro-text-wrapper');
   const rows = Array.from(introEl.querySelectorAll<HTMLElement>('.intro-text-row'));
 
-  if (!svg || !videoEl || !videoWrapEl || !logoEl || !textWrapper || rows.length === 0) return;
+  if (!svg || !videoEl || !videoWrapEl || !textWrapper || rows.length === 0) {
+    return;
+  }
 
   _introActive = true;
   _introPromise = new Promise<void>((resolve) => {
@@ -288,7 +476,7 @@ export function initIntroSequence(): void {
   });
 
   // Make intro visible (Webflow keeps it display:none by default)
-  gsap.set(introEl, { display: 'flex', opacity: 1 });
+  gsap.set(introEl, { display: 'flex', opacity: 1, overflow: 'hidden' });
 
   // Restructure SVG for icon → wordmark animation
   const { gO, gParen, gClose, utsideRect, erspRect } = restructureLogo(svg);
@@ -298,34 +486,56 @@ export function initIntroSequence(): void {
   gsap.set(gParen, { x: PAREN_TX });
   gsap.set(gClose, { x: CLOSE_TX });
 
-  // Logo starts hidden so the compact O(P) icon can fade in after the intro begins.
-  gsap.set(logoEl, { opacity: 0 });
-
-  // Video: start blurred; overscan hides the blur hard edge
   gsap.set(videoEl, { filter: 'blur(120px)' });
-  gsap.set(videoWrapEl, { scale: 1.1 });
 
   // ── Tagline setup ──────────────────────────────────────────────────────────
-  // Centre all absolute rows on top of each other; the timeline expands them
-  // outward from the Webflow-marked center row.
+  // The intro temporarily takes over each word as an absolute point on a circle.
+  const wrapperW = textWrapper.offsetWidth;
   const wrapperH = textWrapper.offsetHeight;
-  const markedPrimaryIndex = rows.findIndex(
+  const centerClassIndex = rows.findIndex((row) => row.classList.contains('center'));
+  const centerAttributeIndex = rows.findIndex(
     (row) =>
       row.getAttribute('intro-text-rowID') === 'center' ||
-      row.getAttribute('intro-text-rowid') === 'center' ||
-      row.classList.contains('center')
+      row.getAttribute('intro-text-rowid') === 'center'
   );
   const primaryRowIndex =
-    markedPrimaryIndex >= 0 ? markedPrimaryIndex : Math.min(FALLBACK_PRIMARY_ROW, rows.length - 1);
-  const primaryRow = rows[primaryRowIndex];
+    centerClassIndex >= 0
+      ? centerClassIndex
+      : centerAttributeIndex >= 0
+        ? centerAttributeIndex
+        : Math.min(FALLBACK_PRIMARY_ROW, rows.length - 1);
+  const rowWords = rows.map((row) =>
+    prepareCircularTextItems(Array.from(row.querySelectorAll<HTMLElement>('.intro-text')))
+  );
 
   rows.forEach((row, i) => {
-    gsap.set(row, { opacity: i === primaryRowIndex ? 1 : 0, y: 0 });
+    gsap.set(row, {
+      display: 'block',
+      inset: 0,
+      opacity: i === primaryRowIndex ? 1 : 0,
+      pointerEvents: 'none',
+      position: 'absolute',
+      width: '100%',
+      y: 0,
+    });
   });
 
-  // Primary row words hidden; they fade in one-by-one when the logo fades out.
-  const primaryWords = Array.from(primaryRow.querySelectorAll<HTMLElement>('.intro-text > div'));
-  gsap.set(primaryWords, { opacity: 0 });
+  // All word containers positioned on circle center; visible by default.
+  // Primary row uses per-char opacity for the letter-by-letter reveal.
+  rowWords.flat().forEach((word) => {
+    gsap.set(word.element, {
+      left: '50%',
+      opacity: 1,
+      position: 'absolute',
+      top: '50%',
+      transformOrigin: '50% 50%',
+      whiteSpace: 'nowrap',
+      willChange: 'transform, opacity',
+      xPercent: -50,
+      yPercent: -50,
+    });
+  });
+  rowWords[primaryRowIndex]?.forEach((word) => gsap.set(word.chars, { opacity: 0 }));
 
   // Init video
   const src = videoEl.getAttribute('data-src') || videoEl.getAttribute('src') || '';
@@ -343,7 +553,8 @@ export function initIntroSequence(): void {
     erspRect,
     rows,
     primaryRowIndex,
-    primaryWords,
+    rowWords,
+    wrapperW,
     wrapperH
   );
 }
