@@ -33,7 +33,7 @@ const UTSIDE_CLIP_W_FINAL = UTSIDE_RIGHT - O_RIGHT; // 95.57
 const ERSP_CLIP_X = P_RIGHT; // 139.92
 const ERSP_CLIP_W_FINAL = ERSP_RIGHT - P_RIGHT; // 76.67
 
-const PRIMARY_ROW = 2; // centre row of 5 — stays put during grid expansion
+const FALLBACK_PRIMARY_ROW = 2; // centre row of 5 — used only if Webflow marker is missing
 
 let activeTl: gsap.core.Timeline | null = null;
 let activeHls: Hls | null = null;
@@ -153,64 +153,118 @@ function runTimeline(
   utsideRect: SVGRectElement,
   erspRect: SVGRectElement,
   rows: HTMLElement[],
+  primaryRowIndex: number,
   primaryWords: HTMLElement[],
   wrapperH: number
 ): void {
-  const tl = gsap.timeline({ onComplete: () => cleanup(introEl) });
+  const tl = gsap.timeline({
+    defaults: { ease: 'power3.inOut' },
+    onComplete: () => cleanup(introEl),
+  });
   activeTl = tl;
 
   // ── Timing constants ───────────────────────────────────────────────────────
-  const REVEAL_T = 0.5; // icon → wordmark starts
-  const REVEAL_DUR = 0.7;
-  const LOGO_CUT = REVEAL_T + REVEAL_DUR + 0.5; // 1.7 — instant logo cut
-  const STAGGER = 0.5;
-  const EXPAND_T = LOGO_CUT + (primaryWords.length - 1) * STAGGER + STAGGER; // 1.7 + 1.5 + 0.5 = 3.7
-  const EXPAND_DUR = 0.8;
-  const FADE_T = EXPAND_T + EXPAND_DUR; // 4.5
-  const FADE_DUR = 0.7;
+  const EASE_OUT = 'power3.out';
+  const EASE_IN_OUT = 'power3.inOut';
+  const EASE_IN = 'power3.in';
+  const LOGO_FADE_IN_T = 0.25;
+  const LOGO_FADE_DUR = 0.25;
+  const REVEAL_T = 1.25; // icon → wordmark starts
+  const REVEAL_DUR = 0.65;
+  const TAGLINE_T = 2.7; // previous tagline entry was 1.7s; hold 1s longer
+  const LOGO_FADE_OUT_DUR = 0.25;
+  const WORD_FADE_DUR = 0.22;
+  const WORD_STAGGER = 0.5;
+  const OTHER_ROWS_T = TAGLINE_T + primaryWords.length * WORD_STAGGER;
+  const EXPAND_DUR = 1;
+  const FINAL_LEAVE_T = OTHER_ROWS_T + EXPAND_DUR;
+  const FINAL_LEAVE_DUR = 0.65;
+  const VIDEO_UNBLUR_T = TAGLINE_T;
+  const VIDEO_UNBLUR_DUR = FINAL_LEAVE_T + FINAL_LEAVE_DUR - VIDEO_UNBLUR_T;
 
-  // ── Video: unblur over the full active intro duration ──────────────────────
-  tl.to(videoEl, { filter: 'blur(0px)', duration: FADE_T, ease: 'power1.inOut' }, 0);
+  const rowH = rows[primaryRowIndex]?.offsetHeight || 0;
+  const rowSpread = Math.max(0, wrapperH / 2 - rowH / 2);
+  const maxDistanceFromCenter = Math.max(primaryRowIndex, rows.length - 1 - primaryRowIndex, 1);
+  const expandedY = rows.map((_, i) => {
+    const distanceFromCenter = i - primaryRowIndex;
+    return (distanceFromCenter / maxDistanceFromCenter) * rowSpread;
+  });
+
+  // ── Video: stay heavily blurred until the exit, then resolve late ──────────
+  tl.set(videoEl, { filter: 'blur(120px)' }, 0);
+  tl.to(
+    videoEl,
+    {
+      filter: 'blur(0px)',
+      duration: VIDEO_UNBLUR_DUR,
+      ease: 'power2.out',
+    },
+    VIDEO_UNBLUR_T
+  );
   // Slow push-in during grid expand + exit
-  tl.to(videoWrapEl, { scale: 1.35, duration: FADE_DUR + 1.5, ease: 'power2.out' }, EXPAND_T - 0.5);
+  tl.to(
+    videoWrapEl,
+    { scale: 1.35, duration: FINAL_LEAVE_DUR + 1.5, ease: EASE_OUT },
+    OTHER_ROWS_T
+  );
 
-  // ── Logo: icon → wordmark ──────────────────────────────────────────────────
+  // ── Logo: fade in, then icon → wordmark ────────────────────────────────────
+  tl.to(logoEl, { opacity: 1, duration: LOGO_FADE_DUR, ease: EASE_OUT }, LOGO_FADE_IN_T);
   // O slides left, (P) slides right a touch, ) slides far right ("pushed" by erspective),
   // utside clip grows right, erspective clip grows right.
-  tl.to(gO, { x: 0, duration: REVEAL_DUR, ease: 'power2.out' }, REVEAL_T);
-  tl.to(gParen, { x: 0, duration: REVEAL_DUR, ease: 'power2.out' }, REVEAL_T);
-  tl.to(gClose, { x: 0, duration: REVEAL_DUR, ease: 'power2.out' }, REVEAL_T);
+  tl.to(gO, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
+  tl.to(gParen, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
+  tl.to(gClose, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
   tl.to(
     utsideRect,
-    { attr: { x: O_RIGHT, width: UTSIDE_CLIP_W_FINAL }, duration: REVEAL_DUR, ease: 'power2.out' },
+    { attr: { x: O_RIGHT, width: UTSIDE_CLIP_W_FINAL }, duration: REVEAL_DUR, ease: EASE_OUT },
     REVEAL_T
   );
   tl.to(
     erspRect,
-    { attr: { width: ERSP_CLIP_W_FINAL }, duration: REVEAL_DUR, ease: 'power2.out' },
+    { attr: { width: ERSP_CLIP_W_FINAL }, duration: REVEAL_DUR, ease: EASE_OUT },
     REVEAL_T
   );
 
-  // ── Logo: instant cut — no fade ────────────────────────────────────────────
-  tl.set(logoEl, { opacity: 0 }, LOGO_CUT);
+  // ── Logo: quick fade as the initial tagline row enters ─────────────────────
+  tl.to(logoEl, { opacity: 0, duration: LOGO_FADE_OUT_DUR, ease: EASE_IN }, TAGLINE_T);
 
-  // ── Tagline: primary row words snap in one at a time (no fade) ────────────
+  // ── Tagline: primary row words stagger-fade in first ───────────────────────
   primaryWords.forEach((word, i) => {
-    tl.set(word, { opacity: 1 }, LOGO_CUT + i * STAGGER);
+    tl.to(
+      word,
+      { opacity: 1, duration: WORD_FADE_DUR, ease: EASE_OUT },
+      TAGLINE_T + i * WORD_STAGGER
+    );
   });
 
-  // ── Tagline: other rows fade in + ALL rows slide to natural flex positions ─
-  const otherRows = rows.filter((_, i) => i !== PRIMARY_ROW);
-  tl.to(otherRows, { opacity: 1, duration: 0.4, ease: 'power2.out' }, EXPAND_T);
-  tl.to(rows, { y: 0, duration: EXPAND_DUR, ease: 'power2.inOut', stagger: 0.05 }, EXPAND_T);
+  // ── Tagline: other rows fade in underneath, then expand from center ────────
+  const otherRows = rows.filter((_, i) => i !== primaryRowIndex);
+  tl.to(otherRows, { opacity: 1, duration: 0.25, ease: EASE_OUT }, OTHER_ROWS_T);
+  tl.to(
+    rows,
+    {
+      y: (i) => expandedY[i] ?? 0,
+      duration: EXPAND_DUR,
+      ease: EASE_IN_OUT,
+      stagger: 0.035,
+    },
+    OTHER_ROWS_T
+  );
 
-  // ── Exit: overlay fades + rows continue past viewport edges ───────────────
-  // Rows above centre slide up; rows below slide down — feels like one motion.
+  // ── Exit: overlay fade is locked to the final tagline leave motion ─────────
+  tl.addLabel('taglineLeave', FINAL_LEAVE_T);
   rows.forEach((row, i) => {
-    const exitY = i < PRIMARY_ROW ? -wrapperH : i > PRIMARY_ROW ? wrapperH : 0;
-    tl.to(row, { y: exitY, duration: FADE_DUR, ease: 'power2.in' }, FADE_T);
+    const distanceFromCenter = i - primaryRowIndex;
+    const exitY =
+      distanceFromCenter < 0
+        ? (expandedY[i] ?? 0) - wrapperH
+        : distanceFromCenter >= 0
+          ? (expandedY[i] ?? 0) + wrapperH
+          : 0;
+    tl.to(row, { y: exitY, duration: FINAL_LEAVE_DUR, ease: EASE_IN }, 'taglineLeave');
   });
-  tl.to(introEl, { opacity: 0, duration: FADE_DUR, ease: 'power2.in' }, FADE_T);
+  tl.to(introEl, { opacity: 0, duration: FINAL_LEAVE_DUR, ease: EASE_IN }, 'taglineLeave');
 }
 
 export function initIntroSequence(): void {
@@ -244,30 +298,32 @@ export function initIntroSequence(): void {
   gsap.set(gParen, { x: PAREN_TX });
   gsap.set(gClose, { x: CLOSE_TX });
 
-  // Logo visible immediately — icon appears the instant the intro shows (no fade-in)
-  gsap.set(logoEl, { opacity: 1 });
+  // Logo starts hidden so the compact O(P) icon can fade in after the intro begins.
+  gsap.set(logoEl, { opacity: 0 });
 
   // Video: start blurred; overscan hides the blur hard edge
-  gsap.set(videoEl, { filter: 'blur(60px)' });
+  gsap.set(videoEl, { filter: 'blur(120px)' });
   gsap.set(videoWrapEl, { scale: 1.1 });
 
   // ── Tagline setup ──────────────────────────────────────────────────────────
-  // Centre all rows at the vertical midpoint of the wrapper.
-  // Primary row stays centred throughout; other rows slide to their natural
-  // flex positions during the expand phase.
+  // Centre all absolute rows on top of each other; the timeline expands them
+  // outward from the Webflow-marked center row.
   const wrapperH = textWrapper.offsetHeight;
-  const primaryRow = rows[PRIMARY_ROW];
-  const rowH = primaryRow.offsetHeight;
-  const centerY = (wrapperH - rowH) / 2;
-  const rowOffsets = rows.map((r) => r.offsetTop);
-  const centerOffset = centerY - rowOffsets[PRIMARY_ROW];
+  const markedPrimaryIndex = rows.findIndex(
+    (row) =>
+      row.getAttribute('intro-text-rowID') === 'center' ||
+      row.getAttribute('intro-text-rowid') === 'center' ||
+      row.classList.contains('center')
+  );
+  const primaryRowIndex =
+    markedPrimaryIndex >= 0 ? markedPrimaryIndex : Math.min(FALLBACK_PRIMARY_ROW, rows.length - 1);
+  const primaryRow = rows[primaryRowIndex];
 
   rows.forEach((row, i) => {
-    gsap.set(row, { y: centerOffset });
-    if (i !== PRIMARY_ROW) gsap.set(row, { opacity: 0 });
+    gsap.set(row, { opacity: i === primaryRowIndex ? 1 : 0, y: 0 });
   });
 
-  // Primary row words hidden; they snap in one-by-one when the logo cuts
+  // Primary row words hidden; they fade in one-by-one when the logo fades out.
   const primaryWords = Array.from(primaryRow.querySelectorAll<HTMLElement>('.intro-text > div'));
   gsap.set(primaryWords, { opacity: 0 });
 
@@ -286,6 +342,7 @@ export function initIntroSequence(): void {
     utsideRect,
     erspRect,
     rows,
+    primaryRowIndex,
     primaryWords,
     wrapperH
   );

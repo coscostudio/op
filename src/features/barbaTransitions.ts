@@ -1,5 +1,7 @@
 import gsap from 'gsap';
 
+import { waitForIntro } from './introSequence';
+
 /** Persistent nav/logo that lives outside the barba wrapper — revealed once on hard load only. */
 export const PERSISTENT_NAV = '.logo-container, .nav, .nav-wrapper-mobile';
 
@@ -62,10 +64,11 @@ export const fadeTransition = {
   name: 'fade',
 
   // ── Hard load ─────────────────────────────────────────────────────────────────
-  // Same 0.4s duration as enter — keeps direct loads feeling identical to barba
-  // entrances so view-specific afterEnter animations fire at the same relative point.
+  // Keep native content and persistent nav hidden until the global intro overlay
+  // has fully faded out, then reveal them with the same timing as page enters.
   async once(data: { next: { container: HTMLElement } }) {
     gsap.set([data.next.container, PERSISTENT_NAV], { opacity: 0 });
+    await waitForIntro();
     await gsap.to([data.next.container, PERSISTENT_NAV], {
       opacity: 1,
       duration: 0.4,
