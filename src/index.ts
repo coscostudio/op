@@ -5,11 +5,14 @@ import { greetUser } from '$utils/greet';
 
 import { fadeTransition, patchMainWrapperCSS, updateBodyTheme } from './features/barbaTransitions';
 import { barbaViews } from './features/barbaViews';
+import { destroyIntroSequence, initIntroSequence } from './features/introSequence';
 import { updateNavCurrentState } from './features/nav';
 import { getStoredWorkViewMode, initWorkView } from './features/workView';
 
 window.Webflow ||= [];
 window.Webflow.push(() => {
+  initIntroSequence();
+
   greetUser('John Doe');
 
   // Strip any display:none or opacity:0 !important Webflow injects on .main-wrapper.
@@ -25,6 +28,11 @@ window.Webflow.push(() => {
     preventRunning: true,
     transitions: [fadeTransition],
     views: barbaViews,
+  });
+
+  // Kill intro if the user navigates before it finishes.
+  barba.hooks.before(() => {
+    destroyIntroSequence();
   });
 
   // Reset scroll on every page transition.

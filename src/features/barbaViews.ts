@@ -1,6 +1,7 @@
 import gsap from 'gsap';
 
 import { destroyCaseSliders, initCaseSliders } from './caseSlider';
+import { waitForIntro } from './introSequence';
 import { destroyLoopSlider, initLoopSlider, remeasureLoopSlider } from './loopSlider';
 import {
   destroyHomeVideoPlayers,
@@ -44,11 +45,11 @@ export const barbaViews = [
     },
 
     afterEnter() {
-      // rAF ensures we're past the frame where GSAP settled container opacity.
-      // This snaps _currentVisibility to correct values — without it, videos
-      // stay at max blur until the user scrolls after a barba transition.
-      requestAnimationFrame(() => {
-        remeasureLoopSlider();
+      // On direct loads with intro playing: wait for it to complete so the slider
+      // remeasure fires after the overlay is gone (correct visibility state).
+      // On barba transitions: waitForIntro resolves immediately.
+      waitForIntro().then(() => {
+        requestAnimationFrame(() => remeasureLoopSlider());
       });
     },
   },
@@ -108,43 +109,52 @@ export const barbaViews = [
     afterEnter({ next }: Pick<ViewData, 'next'>) {
       const savedMode = getStoredWorkViewMode();
 
-      if (savedMode === 'grid') {
-        const workgrid = next.container.querySelector<HTMLElement>('.component-workgrid');
-        const gridItems = Array.from(
-          next.container.querySelectorAll<HTMLElement>('.workgrid-item')
-        );
+      // On direct loads with intro playing: delay entrance until overlay fades.
+      // On barba transitions: resolves immediately.
+      waitForIntro().then(() => {
+        if (savedMode === 'grid') {
+          const workgrid = next.container.querySelector<HTMLElement>('.component-workgrid');
+          const gridItems = Array.from(
+            next.container.querySelectorAll<HTMLElement>('.workgrid-item')
+          );
 
-        if (workgrid) {
-          gsap.to(workgrid, { opacity: 1, duration: 0.45, ease: 'power2.out', overwrite: 'auto' });
-        }
-        if (gridItems.length) {
-          gsap.to(gridItems, {
-            opacity: 1,
-            y: 0,
-            duration: 0.45,
-            ease: 'power2.out',
-            stagger: 0.07,
-            onComplete: () => initWorkView(next.container),
-          });
+          if (workgrid) {
+            gsap.to(workgrid, {
+              opacity: 1,
+              duration: 0.45,
+              ease: 'power2.out',
+              overwrite: 'auto',
+            });
+          }
+          if (gridItems.length) {
+            gsap.to(gridItems, {
+              opacity: 1,
+              y: 0,
+              duration: 0.45,
+              ease: 'power2.out',
+              stagger: 0.07,
+              onComplete: () => initWorkView(next.container),
+            });
+          } else {
+            initWorkView(next.container);
+          }
         } else {
-          initWorkView(next.container);
+          // list or list-expanded
+          const items = Array.from(next.container.querySelectorAll<HTMLElement>('.worklist-item'));
+          if (items.length) {
+            gsap.to(items, {
+              opacity: 1,
+              y: 0,
+              duration: 0.45,
+              ease: 'power2.out',
+              stagger: 0.07,
+              onComplete: () => initWorkView(next.container),
+            });
+          } else {
+            initWorkView(next.container);
+          }
         }
-      } else {
-        // list or list-expanded
-        const items = Array.from(next.container.querySelectorAll<HTMLElement>('.worklist-item'));
-        if (items.length) {
-          gsap.to(items, {
-            opacity: 1,
-            y: 0,
-            duration: 0.45,
-            ease: 'power2.out',
-            stagger: 0.07,
-            onComplete: () => initWorkView(next.container),
-          });
-        } else {
-          initWorkView(next.container);
-        }
-      }
+      });
     },
 
     beforeLeave() {
