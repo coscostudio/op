@@ -41,6 +41,8 @@ type CircularTextItem = {
   element: HTMLElement;
 };
 
+type IntroRouteVariant = 'default' | 'work';
+
 let activeTl: gsap.core.Timeline | null = null;
 let activeHls: Hls | null = null;
 let _introActive = false;
@@ -149,6 +151,163 @@ function cleanup(introEl: HTMLElement): void {
 }
 
 const clamp = (min: number, value: number, max: number) => Math.min(max, Math.max(min, value));
+
+function getIntroRouteVariant(): IntroRouteVariant {
+  const namespace = document
+    .querySelector('[data-barba-namespace]')
+    ?.getAttribute('data-barba-namespace');
+
+  if (namespace === 'work') return 'work';
+
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/work') return 'work';
+
+  return 'default';
+}
+
+function selectIntroTextWrapper(
+  introEl: HTMLElement,
+  routeVariant: IntroRouteVariant
+): HTMLElement | null {
+  const wrappers = Array.from(introEl.querySelectorAll<HTMLElement>('.intro-text-wrapper'));
+  const variantName = routeVariant === 'work' ? 'work' : 'home';
+  const activeWrapper =
+    wrappers.find((wrapper) => wrapper.getAttribute('intro-variant') === variantName) ??
+    wrappers.find((wrapper) => wrapper.getAttribute('intro-variant') === 'home') ??
+    wrappers[0] ??
+    null;
+
+  wrappers.forEach((wrapper) => {
+    if (wrapper === activeWrapper) {
+      gsap.set(wrapper, { display: 'flex', opacity: 1 });
+      return;
+    }
+
+    gsap.set(wrapper, { display: 'none', opacity: 0 });
+  });
+
+  return activeWrapper;
+}
+
+function getPrimaryRowIndex(rows: HTMLElement[]): number {
+  const centerClassIndex = rows.findIndex((row) => row.classList.contains('center'));
+  const centerAttributeIndex = rows.findIndex(
+    (row) =>
+      row.getAttribute('intro-text-rowID') === 'center' ||
+      row.getAttribute('intro-text-rowid') === 'center'
+  );
+
+  return centerClassIndex >= 0
+    ? centerClassIndex
+    : centerAttributeIndex >= 0
+      ? centerAttributeIndex
+      : Math.min(FALLBACK_PRIMARY_ROW, rows.length - 1);
+}
+
+function prepareStraightRow(
+  row: HTMLElement,
+  wrapper: HTMLElement,
+  anchor: 'bottom' | 'center'
+): void {
+  gsap.set(wrapper, {
+    display: 'flex',
+    overflow: 'visible',
+  });
+  gsap.set(row, {
+    bottom: anchor === 'bottom' ? 'clamp(1rem, 8vh, 7rem)' : 'auto',
+    clearProps: 'gap',
+    display: 'flex',
+    inset: 'auto',
+    justifyContent: 'space-between',
+    left: 0,
+    opacity: 1,
+    pointerEvents: 'none',
+    position: 'absolute',
+    top: anchor === 'bottom' ? 'auto' : '50%',
+    transformOrigin: '50% 50%',
+    whiteSpace: 'nowrap',
+    width: '100%',
+    willChange: 'transform, opacity',
+    xPercent: 0,
+    yPercent: anchor === 'bottom' ? 0 : -50,
+  });
+  gsap.set(row.querySelectorAll<HTMLElement>('.intro-text'), {
+    clearProps: 'left,top,x,y,xPercent,yPercent,rotation,position',
+    opacity: 1,
+  });
+}
+
+function setWorkRowCopy(row: HTMLElement): void {
+  const copy = ['creative', 'and', 'production', 'studio'];
+  let words = Array.from(row.querySelectorAll<HTMLElement>('.intro-text'));
+
+  while (words.length < copy.length) {
+    const word = document.createElement('div');
+    word.className = 'intro-text';
+    row.appendChild(word);
+    words.push(word);
+  }
+
+  const extraWords = words.slice(copy.length);
+  extraWords.forEach((word) => word.remove());
+  words = words.slice(0, copy.length);
+
+  words.forEach((word, i) => {
+    let textEl = word.firstElementChild instanceof HTMLElement ? word.firstElementChild : null;
+
+    if (!textEl) {
+      textEl = document.createElement('div');
+      word.textContent = '';
+      word.appendChild(textEl);
+    }
+
+    textEl.textContent = copy[i] ?? '';
+    gsap.set(word, { clearProps: 'all' });
+    gsap.set(textEl, { clearProps: 'all' });
+  });
+}
+
+function prepareInlineTextChars(row: HTMLElement): HTMLSpanElement[] {
+  const chars: HTMLSpanElement[] = [];
+
+  row.querySelectorAll<HTMLElement>('.intro-text').forEach((word) => {
+    const textEl = word.firstElementChild instanceof HTMLElement ? word.firstElementChild : word;
+    const text = textEl.textContent ?? '';
+    const wordChars = Array.from(text).map((char) => {
+      const span = document.createElement('span');
+      span.dataset.introChar = '';
+      span.textContent = char === ' ' ? '\u00a0' : char;
+      span.style.display = 'inline-block';
+      span.style.whiteSpace = 'pre';
+      return span;
+    });
+
+    textEl.textContent = '';
+    wordChars.forEach((span) => textEl.appendChild(span));
+    chars.push(...wordChars);
+  });
+
+  return chars;
+}
+
+function cloneStraightRows(
+  primaryRow: HTMLElement,
+  textWrapper: HTMLElement,
+  cloneCount: number,
+  anchor: 'bottom' | 'center'
+): HTMLElement[] {
+  return Array.from({ length: cloneCount }, (_, i) => {
+    const clone = primaryRow.cloneNode(true) as HTMLElement;
+    clone.setAttribute('aria-hidden', 'true');
+    clone.classList.add('intro-text-row-duplicate');
+    clone.dataset.introDuplicate = String(i + 1);
+    textWrapper.appendChild(clone);
+    prepareStraightRow(clone, textWrapper, anchor);
+    gsap.set(clone.querySelectorAll<HTMLElement>('[data-intro-char]'), { opacity: 1 });
+    gsap.set(clone, { opacity: 0, y: 0 });
+    return clone;
+  });
+}
 
 function readableTangentRotation(angleDeg: number): number {
   return angleDeg + 90;
@@ -453,8 +612,214 @@ function runTimeline(
   tl.to(introEl, { opacity: 0, duration: 0.62, ease: EASE_IN }, FILL_T - 0.48);
 }
 
+function runVerticalTimeline(
+  introEl: HTMLElement,
+  videoEl: HTMLVideoElement,
+  videoWrapEl: HTMLElement,
+  logoEl: HTMLElement | null,
+  gO: SVGGElement,
+  gParen: SVGGElement,
+  gClose: SVGGElement,
+  utsideRect: SVGRectElement,
+  erspRect: SVGRectElement,
+  rows: HTMLElement[],
+  primaryRowIndex: number,
+  textWrapper: HTMLElement
+): void {
+  const tl = gsap.timeline({
+    defaults: { ease: 'power3.inOut' },
+    onComplete: () => cleanup(introEl),
+  });
+  activeTl = tl;
+
+  const EASE_OUT = 'power3.out';
+  const EASE_IN_OUT = 'power3.inOut';
+  const EASE_IN = 'power3.in';
+  const REVEAL_T = 0.5;
+  const REVEAL_DUR = 0.5;
+  const ROW_REVEAL_T = 1.2;
+  const CHAR_FADE_DUR = 0.16;
+  const CHAR_STAGGER = 0.025;
+  const EXPLODE_T = 2.05;
+  const EXPLODE_DUR = 1.38;
+  const LOGO_LEAVE_T = EXPLODE_T + 0.12;
+  const LOGO_LEAVE_DUR = 0.78;
+  const FILL_T = EXPLODE_T + 0.35;
+  const FILL_DUR = 1.05;
+  const FADE_T = EXPLODE_T + 1.28;
+
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  const wrapRect = videoWrapEl.getBoundingClientRect();
+  const measuredVideoHeight =
+    wrapRect.height || videoWrapEl.offsetHeight || Math.min(viewportW, viewportH) * 0.32;
+  const measuredVideoWidth = wrapRect.width || videoWrapEl.offsetWidth || measuredVideoHeight;
+  const initialVideoSize = Math.min(measuredVideoHeight, measuredVideoWidth, viewportW, viewportH);
+  const finalVideoWidth = Math.hypot(viewportW, viewportH) * 1.08;
+  const primaryRow = rows[primaryRowIndex];
+  if (primaryRow) setWorkRowCopy(primaryRow);
+  const primaryChars = primaryRow ? prepareInlineTextChars(primaryRow) : [];
+  const duplicateCount = clamp(36, Math.round(viewportH / 14), 64);
+  const duplicates = primaryRow
+    ? cloneStraightRows(primaryRow, textWrapper, duplicateCount, 'bottom')
+    : [];
+  const allStraightRows = primaryRow ? [primaryRow, ...duplicates] : duplicates;
+  const rowHeight = primaryRow?.offsetHeight || 24;
+  const rowGap = clamp(rowHeight * 0.9, viewportH / 42, rowHeight * 1.35);
+
+  rows.forEach((row, i) => {
+    if (i === primaryRowIndex) return;
+    gsap.set(row, { display: 'none', opacity: 0 });
+  });
+  if (primaryRow) {
+    prepareStraightRow(primaryRow, textWrapper, 'bottom');
+    gsap.set(primaryRow, { opacity: 0, scale: 0.98, y: 0 });
+    gsap.set(primaryChars, { opacity: 0, yPercent: 20 });
+  }
+
+  tl.set(
+    videoWrapEl,
+    {
+      borderRadius: 0,
+      maskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
+      WebkitMaskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
+      overflow: 'visible',
+      height: initialVideoSize,
+      width: initialVideoSize,
+      willChange: 'width, height, transform',
+    },
+    0
+  );
+  tl.set(videoEl, { filter: 'blur(120px)', scale: 1, transformOrigin: '50% 50%' }, 0);
+  tl.to(
+    videoEl,
+    { filter: 'blur(0px)', duration: FILL_T + FILL_DUR - ROW_REVEAL_T, ease: 'power2.out' },
+    ROW_REVEAL_T
+  );
+
+  const maskState = { inner: 40, outer: 72 };
+  const updateMask = () => {
+    const grad = `radial-gradient(circle, black ${maskState.inner.toFixed(1)}%, transparent ${maskState.outer.toFixed(1)}%)`;
+    videoWrapEl.style.maskImage = grad;
+    (videoWrapEl.style as CSSStyleDeclaration & { WebkitMaskImage: string }).WebkitMaskImage = grad;
+  };
+  tl.to(
+    maskState,
+    {
+      inner: 100,
+      outer: 150,
+      duration: FILL_DUR,
+      ease: 'power2.inOut',
+      onUpdate: updateMask,
+    },
+    FILL_T
+  );
+  tl.to(
+    videoWrapEl,
+    { height: finalVideoWidth, width: finalVideoWidth, duration: FILL_DUR, ease: 'power2.inOut' },
+    FILL_T
+  );
+  tl.to(videoEl, { scale: 1.35, duration: FILL_DUR, ease: 'power2.out' }, FILL_T);
+
+  tl.to(gO, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
+  tl.to(gParen, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
+  tl.to(gClose, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
+  tl.to(
+    utsideRect,
+    { attr: { x: O_RIGHT, width: UTSIDE_CLIP_W_FINAL }, duration: REVEAL_DUR, ease: EASE_OUT },
+    REVEAL_T
+  );
+  tl.to(
+    erspRect,
+    { attr: { width: ERSP_CLIP_W_FINAL }, duration: REVEAL_DUR, ease: EASE_OUT },
+    REVEAL_T
+  );
+
+  if (primaryRow) {
+    tl.to(primaryRow, { opacity: 1, scale: 1, duration: 0.36, ease: EASE_OUT }, ROW_REVEAL_T);
+  }
+  if (primaryChars.length) {
+    tl.to(
+      primaryChars,
+      {
+        opacity: 1,
+        yPercent: 0,
+        duration: CHAR_FADE_DUR,
+        ease: EASE_OUT,
+        stagger: CHAR_STAGGER,
+      },
+      ROW_REVEAL_T
+    );
+  }
+
+  duplicates.forEach((row, i) => {
+    const rank = i + 1;
+    const targetY = -rank * rowGap;
+    const startTime = EXPLODE_T + Math.min(rank * 0.01, 0.22);
+
+    gsap.set(row, {
+      opacity: 0,
+      y: 0,
+      zIndex: duplicateCount - i,
+    });
+    tl.to(row, { opacity: 1, duration: 0.08, ease: EASE_OUT }, startTime);
+    tl.to(
+      row,
+      {
+        y: targetY,
+        duration: EXPLODE_DUR + rank * 0.006,
+        ease: 'power3.inOut',
+      },
+      startTime
+    );
+    tl.to(
+      row,
+      { opacity: 0, duration: 0.36, ease: EASE_IN },
+      startTime + EXPLODE_DUR * 0.78 + rank * 0.004
+    );
+  });
+
+  if (primaryRow) {
+    tl.to(
+      primaryRow,
+      { opacity: 0, y: -viewportH * 0.08, duration: EXPLODE_DUR * 0.55, ease: EASE_IN },
+      EXPLODE_T + 0.58
+    );
+  }
+
+  if (logoEl) {
+    tl.to(
+      logoEl,
+      { opacity: 0, scale: 0.92, duration: LOGO_LEAVE_DUR, ease: EASE_IN },
+      LOGO_LEAVE_T + 0.1
+    );
+  }
+  tl.to(gO, { x: O_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, LOGO_LEAVE_T);
+  tl.to(gParen, { x: PAREN_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, LOGO_LEAVE_T);
+  tl.to(gClose, { x: CLOSE_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, LOGO_LEAVE_T);
+  tl.to(
+    utsideRect,
+    {
+      attr: { x: UTSIDE_CLIP_X_ICON, width: 0 },
+      duration: LOGO_LEAVE_DUR,
+      ease: EASE_IN_OUT,
+    },
+    LOGO_LEAVE_T
+  );
+  tl.to(
+    erspRect,
+    { attr: { width: 0 }, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT },
+    LOGO_LEAVE_T
+  );
+
+  tl.to(introEl, { opacity: 0, duration: 0.62, ease: EASE_IN }, FADE_T);
+  tl.add(() => allStraightRows.forEach((row) => gsap.set(row, { clearProps: 'willChange' })));
+}
+
 export function initIntroSequence(): void {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const routeVariant = getIntroRouteVariant();
 
   const introEl = document.querySelector<HTMLElement>('.intro');
   if (!introEl) return;
@@ -463,10 +828,16 @@ export function initIntroSequence(): void {
   const videoEl = introEl.querySelector<HTMLVideoElement>('.intro-video');
   const videoWrapEl = introEl.querySelector<HTMLElement>('.intro-video-wrapper');
   const logoEl = introEl.querySelector<HTMLElement>('.intro-logo');
-  const textWrapper = introEl.querySelector<HTMLElement>('.intro-text-wrapper');
-  const rows = Array.from(introEl.querySelectorAll<HTMLElement>('.intro-text-row'));
+  const textWrapper = selectIntroTextWrapper(introEl, routeVariant);
+  const rows = textWrapper
+    ? Array.from(textWrapper.querySelectorAll<HTMLElement>('.intro-text-row'))
+    : [];
 
-  if (!svg || !videoEl || !videoWrapEl || !textWrapper || rows.length === 0) {
+  if (!svg || !videoEl || !videoWrapEl || !textWrapper) {
+    return;
+  }
+
+  if (rows.length === 0) {
     return;
   }
 
@@ -489,21 +860,34 @@ export function initIntroSequence(): void {
   gsap.set(videoEl, { filter: 'blur(120px)' });
 
   // ── Tagline setup ──────────────────────────────────────────────────────────
-  // The intro temporarily takes over each word as an absolute point on a circle.
   const wrapperW = textWrapper.offsetWidth;
   const wrapperH = textWrapper.offsetHeight;
-  const centerClassIndex = rows.findIndex((row) => row.classList.contains('center'));
-  const centerAttributeIndex = rows.findIndex(
-    (row) =>
-      row.getAttribute('intro-text-rowID') === 'center' ||
-      row.getAttribute('intro-text-rowid') === 'center'
-  );
-  const primaryRowIndex =
-    centerClassIndex >= 0
-      ? centerClassIndex
-      : centerAttributeIndex >= 0
-        ? centerAttributeIndex
-        : Math.min(FALLBACK_PRIMARY_ROW, rows.length - 1);
+
+  // Init video
+  const src = videoEl.getAttribute('data-src') || videoEl.getAttribute('src') || '';
+  if (src) attachVideo(videoEl, src);
+
+  const primaryRowIndex = getPrimaryRowIndex(rows);
+
+  if (routeVariant === 'work') {
+    runVerticalTimeline(
+      introEl,
+      videoEl,
+      videoWrapEl,
+      logoEl,
+      gO,
+      gParen,
+      gClose,
+      utsideRect,
+      erspRect,
+      rows,
+      primaryRowIndex,
+      textWrapper
+    );
+    return;
+  }
+
+  // The home/default intro temporarily takes over each word as an absolute point on a circle.
   const rowWords = rows.map((row) =>
     prepareCircularTextItems(Array.from(row.querySelectorAll<HTMLElement>('.intro-text')))
   );
@@ -536,10 +920,6 @@ export function initIntroSequence(): void {
     });
   });
   rowWords[primaryRowIndex]?.forEach((word) => gsap.set(word.chars, { opacity: 0 }));
-
-  // Init video
-  const src = videoEl.getAttribute('data-src') || videoEl.getAttribute('src') || '';
-  if (src) attachVideo(videoEl, src);
 
   runTimeline(
     introEl,
