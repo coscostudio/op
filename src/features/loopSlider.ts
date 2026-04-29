@@ -26,7 +26,10 @@ const LOOP_SLIDER_CONFIG = {
   lerp: 0.08,
   progressLerp: 0.12,
   minOpacity: 0.66,
-  safeZoneBuffer: 0,
+  focusSafeZoneRatio: 0.24,
+  mobileFocusSafeZoneRatio: 0.34,
+  focusFadeRatio: 0.56,
+  mobileFocusCenterRatio: 0.44,
   videoPlayThreshold: 0.12,
   videoPauseThreshold: 0.02,
 };
@@ -49,6 +52,8 @@ const LENIS_STYLE_ID = 'loop-slider-lenis-styles';
 const LENIS_STYLES =
   'html.lenis,html.lenis body{height:auto}.lenis:not(.lenis-autoToggle).lenis-stopped{overflow:clip}.lenis [data-lenis-prevent],.lenis [data-lenis-prevent-wheel],.lenis [data-lenis-prevent-touch]{overscroll-behavior:contain}.lenis.lenis-smooth iframe{pointer-events:none}.lenis.lenis-autoToggle{transition-property:overflow;transition-duration:1ms;transition-behavior:allow-discrete}';
 const LOOP_SLIDER_SNAP_ATTR = 'data-loop-slider-snap';
+const MOBILE_BREAKPOINT = 767;
+const MOBILE_VIEWPORT_OVERSCAN_REM = 14;
 
 let sliderAnimationFrame: number | null = null;
 let sliderScrollListenerAttached = false;
@@ -101,6 +106,9 @@ const getLoopSliderRoots = () => {
   const roots = queryAllWithFallback<HTMLElement>(document, LOOP_SLIDER_SELECTORS.root);
   return roots.filter((root) => queryElementWithFallback(root, LOOP_SLIDER_SELECTORS.list));
 };
+
+const isMobileViewport = () => window.innerWidth <= MOBILE_BREAKPOINT;
+const getMobileOverscanHeight = () => `calc(100dvh + ${MOBILE_VIEWPORT_OVERSCAN_REM}rem)`;
 
 let currentSource: HTMLElement | null = null;
 
@@ -207,6 +215,8 @@ class LoopSliderInstance {
   }
 
   public destroy() {
+    this.clearViewportBounds();
+
     if (this.handleLenisScroll && this.localLenis) {
       this.localLenis.off('scroll', this.handleLenisScroll);
     }
@@ -227,6 +237,7 @@ class LoopSliderInstance {
 
     ensureLenisStyles();
 
+    this.applyViewportBounds();
     this.root.style.overflow = 'hidden';
     this.root.style.position = 'relative';
     this.root.style.touchAction = 'none'; // Prevent iOS native interference
@@ -238,7 +249,8 @@ class LoopSliderInstance {
       smoothWheel: true,
       infinite: true,
       syncTouch: true,
-      touchMultiplier: 0.65,
+      touchMultiplier: isMobileViewport() ? 1.15 : 0.9,
+      wheelMultiplier: 1,
     });
 
     this.handleLenisScroll = () => {
@@ -259,6 +271,37 @@ class LoopSliderInstance {
       if (this.primaryList) {
         this.primaryList.style.opacity = '1';
       }
+    });
+  }
+
+  public applyViewportBounds() {
+    this.clearViewportBounds();
+
+    if (!isMobileViewport()) {
+      return;
+    }
+
+    const homeMain = this.root.closest<HTMLElement>('.home-main');
+    const overscanHeight = getMobileOverscanHeight();
+
+    [homeMain, this.root].forEach((element) => {
+      if (!element) return;
+
+      element.style.height = overscanHeight;
+      element.style.minHeight = overscanHeight;
+      element.style.maxHeight = 'none';
+    });
+  }
+
+  private clearViewportBounds() {
+    const homeMain = this.root.closest<HTMLElement>('.home-main');
+
+    [homeMain, this.root].forEach((element) => {
+      if (!element) return;
+
+      element.style.removeProperty('height');
+      element.style.removeProperty('min-height');
+      element.style.removeProperty('max-height');
     });
   }
 
@@ -399,6 +442,23 @@ class LoopSliderInstance {
     this.trackElement.style.transform = `translate3d(0, ${this.loopOffset}px, 0)`;
   }
 
+  private getFocusVisibility(rect: DOMRect) {
+    const focusCenter =
+      this.viewportHeight * (isMobileViewport() ? this.config.mobileFocusCenterRatio : 0.5);
+    const elementCenter = rect.top + rect.height / 2;
+    const safeZone =
+      this.viewportHeight *
+      (isMobileViewport() ? this.config.mobileFocusSafeZoneRatio : this.config.focusSafeZoneRatio);
+    const fadeDistance = Math.max(
+      rect.height * this.config.focusFadeRatio,
+      this.viewportHeight * 0.34
+    );
+    const distanceOutsideSafeZone = Math.max(0, Math.abs(elementCenter - focusCenter) - safeZone);
+    const rawVisibility = 1 - distanceOutsideSafeZone / fadeDistance;
+
+    return Math.pow(clamp(rawVisibility, 0, 1), 0.8);
+  }
+
   public measure() {
     if (!this.slides.length) return;
 
@@ -406,7 +466,6 @@ class LoopSliderInstance {
     this.computeLoopHeight();
     this.applyLoopOffset();
 
-    const buffer = this.config.safeZoneBuffer;
     let maxVisibility = -1;
     let nextActiveSlide: SlideState | null = null;
 
@@ -415,22 +474,7 @@ class LoopSliderInstance {
 
       const scaleTarget = slide.focusNodes[0] || slide.node;
       const scaleRect = scaleTarget.getBoundingClientRect();
-      const scaleHeight = scaleRect.height;
-
-      const scaleTransitionDistance = scaleHeight;
-      const scaleProgressTop = clamp(
-        (scaleRect.top + buffer + scaleTransitionDistance) / scaleTransitionDistance,
-        0,
-        1
-      );
-      const scaleProgressBottom = clamp(
-        (this.viewportHeight + buffer + scaleTransitionDistance - scaleRect.bottom) /
-          scaleTransitionDistance,
-        0,
-        1
-      );
-
-      const scaleVisibility = Math.pow(Math.min(scaleProgressTop, scaleProgressBottom), 0.8);
+      const scaleVisibility = this.getFocusVisibility(scaleRect);
 
       slide.targetProgress = scaleVisibility;
       slide.targetScale =
@@ -447,16 +491,7 @@ class LoopSliderInstance {
           _currentVisibility?: number;
         };
         const nodeRect = node.getBoundingClientRect();
-        const nodeHeight = nodeRect.height;
-        const nodeDist = nodeHeight;
-
-        const pTop = clamp((nodeRect.top + buffer + nodeDist) / nodeDist, 0, 1);
-        const pBottom = clamp(
-          (this.viewportHeight + buffer + nodeDist - nodeRect.bottom) / nodeDist,
-          0,
-          1
-        );
-        const nodeVis = Math.pow(Math.min(pTop, pBottom), 0.8);
+        const nodeVis = this.getFocusVisibility(nodeRect);
 
         extendedNode._targetVisibility = nodeVis;
         if (typeof extendedNode._currentVisibility === 'undefined') {
@@ -539,7 +574,10 @@ class LoopSliderInstance {
 }
 
 const triggerSliderMeasurements = () => {
-  loopSliderInstances.forEach((instance) => instance.measure());
+  loopSliderInstances.forEach((instance) => {
+    instance.applyViewportBounds();
+    instance.measure();
+  });
 };
 
 const handleNativeScroll = () => triggerSliderMeasurements();

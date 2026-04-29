@@ -42,7 +42,7 @@ const INITIAL_VIDEO_MAX_VIEWPORT = 0.92;
 const INITIAL_VIDEO_MOBILE_MAX_VW = 1.7;
 const INITIAL_VIDEO_MASK_OUTER_RATIO = 0.72;
 const INITIAL_VIDEO_RING_PADDING = 80;
-const INTRO_MOBILE_OVERSCAN_VH = 1.3;
+const INTRO_MOBILE_OVERSCAN_REM = 14;
 const MOBILE_BREAKPOINT = 767;
 
 type CircularTextItem = {
@@ -150,10 +150,13 @@ function prepareIntroOverlay(introEl: HTMLElement, videoWrapEl: HTMLElement): vo
 
   if (!isMobile) return;
 
+  const overscanHeight = `calc(100dvh + ${INTRO_MOBILE_OVERSCAN_REM}rem)`;
   const overscanProps = {
     bottom: 'auto',
-    height: `${INTRO_MOBILE_OVERSCAN_VH * 100}dvh`,
+    height: overscanHeight,
     left: 0,
+    maxHeight: 'none',
+    minHeight: overscanHeight,
     overflow: 'visible',
     right: 'auto',
     top: '50%',
