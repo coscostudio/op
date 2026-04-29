@@ -35,6 +35,15 @@ const ERSP_CLIP_W_FINAL = ERSP_RIGHT - P_RIGHT; // 76.67
 
 const FALLBACK_PRIMARY_ROW = 1; // upper-middle row of 4 — used only if Webflow marker is missing
 const CIRCLE_START_ANGLE = -112.5;
+const VIDEO_READY_TIMEOUT_MS = 1200;
+const INTRO_FADE_IN_DUR = 0.42;
+const INITIAL_VIDEO_SCALE = 1.16;
+const INITIAL_VIDEO_MAX_VIEWPORT = 0.92;
+const INITIAL_VIDEO_MOBILE_MAX_VW = 1.7;
+const INITIAL_VIDEO_MASK_OUTER_RATIO = 0.72;
+const INITIAL_VIDEO_RING_PADDING = 80;
+const INTRO_MOBILE_OVERSCAN_VH = 1.3;
+const MOBILE_BREAKPOINT = 767;
 
 type CircularTextItem = {
   chars: HTMLSpanElement[];
@@ -42,9 +51,14 @@ type CircularTextItem = {
 };
 
 type IntroRouteVariant = 'default' | 'work';
+type IntroVideoLayout = {
+  finalVideoWidth: number;
+  initialVideoSize: number;
+};
 
 let activeTl: gsap.core.Timeline | null = null;
 let activeHls: Hls | null = null;
+let activeIntroScrollLocked = false;
 let _introActive = false;
 let _introResolve: (() => void) | null = null;
 let _introPromise: Promise<void> = Promise.resolve();
@@ -116,13 +130,140 @@ function restructureLogo(svg: SVGSVGElement): {
   return { gO, gParen, gClose, utsideRect, erspRect };
 }
 
-function attachVideo(videoEl: HTMLVideoElement, src: string): void {
+function prepareIntroLogo(svg: SVGSVGElement, logoEl: HTMLElement | null): void {
+  const logoEmbed = svg.closest<HTMLElement>('.logo-1');
+
+  gsap.set([logoEl, logoEmbed, svg].filter(Boolean), { overflow: 'visible' });
+  if (logoEmbed) gsap.set(logoEmbed, { display: 'block', lineHeight: 0 });
+  gsap.set(svg, { display: 'block' });
+  svg.setAttribute('overflow', 'visible');
+}
+
+function prepareIntroOverlay(introEl: HTMLElement, videoWrapEl: HTMLElement): void {
+  const videoLayer = videoWrapEl.closest<HTMLElement>('.intro-video-div');
+  const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+
+  gsap.set(introEl, {
+    display: 'flex',
+    overflow: 'visible',
+  });
+
+  if (!isMobile) return;
+
+  const overscanProps = {
+    bottom: 'auto',
+    height: `${INTRO_MOBILE_OVERSCAN_VH * 100}dvh`,
+    left: 0,
+    overflow: 'visible',
+    right: 'auto',
+    top: '50%',
+    width: '100%',
+    xPercent: 0,
+    yPercent: -50,
+  };
+
+  gsap.set(introEl, overscanProps);
+  if (videoLayer) gsap.set(videoLayer, overscanProps);
+}
+
+function preventIntroScroll(event: Event): void {
+  if (!activeIntroScrollLocked) return;
+
+  event.preventDefault();
+}
+
+function preventIntroScrollKeys(event: KeyboardEvent): void {
+  if (!activeIntroScrollLocked) return;
+
+  const scrollKeys = new Set([' ', 'ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp']);
+  if (!scrollKeys.has(event.key)) return;
+
+  event.preventDefault();
+}
+
+function lockIntroScroll(): void {
+  if (activeIntroScrollLocked) return;
+
+  activeIntroScrollLocked = true;
+
+  window.addEventListener('touchmove', preventIntroScroll, { passive: false });
+  window.addEventListener('wheel', preventIntroScroll, { passive: false });
+  window.addEventListener('keydown', preventIntroScrollKeys);
+
+  document.documentElement.style.overscrollBehavior = 'none';
+  document.body.style.overscrollBehavior = 'none';
+}
+
+function unlockIntroScroll(): void {
+  if (!activeIntroScrollLocked) return;
+
+  activeIntroScrollLocked = false;
+  window.removeEventListener('touchmove', preventIntroScroll);
+  window.removeEventListener('wheel', preventIntroScroll);
+  window.removeEventListener('keydown', preventIntroScrollKeys);
+
+  document.documentElement.style.overscrollBehavior = '';
+  document.body.style.overscrollBehavior = '';
+}
+
+function waitForVideoReady(videoEl: HTMLVideoElement): Promise<void> {
+  if (videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !videoEl.paused) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId = 0;
+
+    const cleanupListeners = () => {
+      window.clearTimeout(timeoutId);
+      videoEl.removeEventListener('playing', onPlaying);
+      videoEl.removeEventListener('loadeddata', onReady);
+      videoEl.removeEventListener('canplay', onReady);
+      videoEl.removeEventListener('error', onReady);
+    };
+
+    const finish = () => {
+      if (settled) return;
+
+      settled = true;
+      cleanupListeners();
+      resolve();
+    };
+
+    const onReady = () => finish();
+    const onPlaying = () => {
+      if (videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) finish();
+    };
+
+    videoEl.addEventListener('playing', onPlaying);
+    videoEl.addEventListener('loadeddata', onReady);
+    videoEl.addEventListener('canplay', onReady);
+    videoEl.addEventListener('error', onReady);
+    timeoutId = window.setTimeout(finish, VIDEO_READY_TIMEOUT_MS);
+  });
+}
+
+function playIntroVideo(videoEl: HTMLVideoElement): void {
+  videoEl.play().catch(() => {});
+}
+
+function attachVideo(videoEl: HTMLVideoElement, src: string): Promise<void> {
+  videoEl.muted = true;
+  videoEl.autoplay = true;
+  videoEl.loop = true;
+  videoEl.playsInline = true;
+  videoEl.preload = 'auto';
+
+  const readyPromise = waitForVideoReady(videoEl);
+
   if (Hls.isSupported() && src.includes('.m3u8')) {
     activeHls = new Hls({ startPosition: 0, maxBufferLength: 30 });
     activeHls.loadSource(src);
     activeHls.attachMedia(videoEl);
+    playIntroVideo(videoEl);
     activeHls.on(Hls.Events.MANIFEST_PARSED, () => {
-      videoEl.play().catch(() => {});
+      playIntroVideo(videoEl);
     });
     activeHls.on(Hls.Events.ERROR, (_e, data) => {
       if (data.fatal) {
@@ -132,16 +273,58 @@ function attachVideo(videoEl: HTMLVideoElement, src: string): void {
     });
   } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
     videoEl.src = src;
-    videoEl.addEventListener('loadedmetadata', () => videoEl.play().catch(() => {}), {
+    videoEl.addEventListener('loadedmetadata', () => playIntroVideo(videoEl), {
       once: true,
     });
+  } else {
+    videoEl.src = src;
+    playIntroVideo(videoEl);
   }
+
+  return readyPromise;
+}
+
+function prepareIntroVideoLayout(
+  videoEl: HTMLVideoElement,
+  videoWrapEl: HTMLElement,
+  minVideoSize = 0
+): IntroVideoLayout {
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  const wrapRect = videoWrapEl.getBoundingClientRect();
+  const measuredVideoHeight =
+    wrapRect.height || videoWrapEl.offsetHeight || Math.min(viewportW, viewportH) * 0.32;
+  const measuredVideoWidth = wrapRect.width || videoWrapEl.offsetWidth || measuredVideoHeight;
+  const measuredVideoSize = Math.min(measuredVideoHeight, measuredVideoWidth, viewportW, viewportH);
+  const maxInitialVideoSize =
+    viewportW <= MOBILE_BREAKPOINT
+      ? viewportW * INITIAL_VIDEO_MOBILE_MAX_VW
+      : Math.min(viewportW, viewportH) * INITIAL_VIDEO_MAX_VIEWPORT;
+  const initialVideoSize = Math.min(
+    maxInitialVideoSize,
+    Math.max(measuredVideoSize * INITIAL_VIDEO_SCALE, minVideoSize)
+  );
+  const finalVideoWidth = Math.hypot(viewportW, viewportH) * 1.08;
+
+  gsap.set(videoWrapEl, {
+    borderRadius: 0,
+    height: initialVideoSize,
+    maskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
+    overflow: 'visible',
+    WebkitMaskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
+    width: initialVideoSize,
+    willChange: 'width, height, transform',
+  });
+  gsap.set(videoEl, { filter: 'blur(120px)', scale: 1, transformOrigin: '50% 50%' });
+
+  return { finalVideoWidth, initialVideoSize };
 }
 
 function cleanup(introEl: HTMLElement): void {
   activeTl = null;
   activeHls?.destroy();
   activeHls = null;
+  unlockIntroScroll();
   gsap.set(introEl, { display: 'none' });
 
   // Fire after overlay is fully gone so page content starts from blank
@@ -391,11 +574,13 @@ function runTimeline(
   primaryRowIndex: number,
   rowWords: CircularTextItem[][],
   wrapperW: number,
-  wrapperH: number
+  wrapperH: number,
+  videoLayout: IntroVideoLayout
 ): void {
   const tl = gsap.timeline({
     defaults: { ease: 'power3.inOut' },
     onComplete: () => cleanup(introEl),
+    paused: true,
   });
   activeTl = tl;
 
@@ -431,19 +616,12 @@ function runTimeline(
   // Video grows just behind the second ring expansion, then lands with the ripple.
   const FILL_T = VIDEO_FILL_T + VIDEO_FILL_DUR;
 
-  const viewportW = window.innerWidth;
-  const viewportH = window.innerHeight;
-  const wrapRect = videoWrapEl.getBoundingClientRect();
-  const measuredVideoHeight =
-    wrapRect.height || videoWrapEl.offsetHeight || Math.min(viewportW, viewportH) * 0.32;
-  const measuredVideoWidth = wrapRect.width || videoWrapEl.offsetWidth || measuredVideoHeight;
-  const initialVideoSize = Math.min(measuredVideoHeight, measuredVideoWidth, viewportW, viewportH);
   const minDimension = Math.min(wrapperW, wrapperH);
   const baseRadius = clamp(150, minDimension * 0.29, 300);
   const tightRingGap = clamp(18, minDimension * 0.035, 40);
   const ringGap = clamp(70, minDimension * 0.12, 150);
   const offscreenRadius = Math.hypot(wrapperW, wrapperH) / 2 + ringGap * 2;
-  const finalVideoWidth = Math.hypot(viewportW, viewportH) * 1.08;
+  const { finalVideoWidth } = videoLayout;
 
   const ringStates = rowWords.map(() => ({
     angleOffset: CIRCLE_START_ANGLE,
@@ -458,22 +636,6 @@ function runTimeline(
   };
 
   applyCircularLayout();
-
-  // ── Video: soft circular mask, grows in sync with ring expansion ──────────
-  tl.set(
-    videoWrapEl,
-    {
-      borderRadius: 0,
-      maskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
-      WebkitMaskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
-      overflow: 'visible',
-      height: initialVideoSize,
-      width: initialVideoSize,
-      willChange: 'width, height, transform',
-    },
-    0
-  );
-  tl.set(videoEl, { filter: 'blur(120px)', scale: 1, transformOrigin: '50% 50%' }, 0);
 
   // Unblur from tagline reveal through the full ring expansion
   tl.to(
@@ -624,11 +786,13 @@ function runVerticalTimeline(
   erspRect: SVGRectElement,
   rows: HTMLElement[],
   primaryRowIndex: number,
-  textWrapper: HTMLElement
+  textWrapper: HTMLElement,
+  videoLayout: IntroVideoLayout
 ): void {
   const tl = gsap.timeline({
     defaults: { ease: 'power3.inOut' },
     onComplete: () => cleanup(introEl),
+    paused: true,
   });
   activeTl = tl;
 
@@ -648,14 +812,8 @@ function runVerticalTimeline(
   const FILL_DUR = 1.05;
   const FADE_T = EXPLODE_T + 1.28;
 
-  const viewportW = window.innerWidth;
   const viewportH = window.innerHeight;
-  const wrapRect = videoWrapEl.getBoundingClientRect();
-  const measuredVideoHeight =
-    wrapRect.height || videoWrapEl.offsetHeight || Math.min(viewportW, viewportH) * 0.32;
-  const measuredVideoWidth = wrapRect.width || videoWrapEl.offsetWidth || measuredVideoHeight;
-  const initialVideoSize = Math.min(measuredVideoHeight, measuredVideoWidth, viewportW, viewportH);
-  const finalVideoWidth = Math.hypot(viewportW, viewportH) * 1.08;
+  const { finalVideoWidth } = videoLayout;
   const primaryRow = rows[primaryRowIndex];
   if (primaryRow) setWorkRowCopy(primaryRow);
   const primaryChars = primaryRow ? prepareInlineTextChars(primaryRow) : [];
@@ -677,20 +835,6 @@ function runVerticalTimeline(
     gsap.set(primaryChars, { opacity: 0, yPercent: 20 });
   }
 
-  tl.set(
-    videoWrapEl,
-    {
-      borderRadius: 0,
-      maskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
-      WebkitMaskImage: 'radial-gradient(circle, black 40%, transparent 72%)',
-      overflow: 'visible',
-      height: initialVideoSize,
-      width: initialVideoSize,
-      willChange: 'width, height, transform',
-    },
-    0
-  );
-  tl.set(videoEl, { filter: 'blur(120px)', scale: 1, transformOrigin: '50% 50%' }, 0);
   tl.to(
     videoEl,
     { filter: 'blur(0px)', duration: FILL_T + FILL_DUR - ROW_REVEAL_T, ease: 'power2.out' },
@@ -845,27 +989,45 @@ export function initIntroSequence(): void {
   _introPromise = new Promise<void>((resolve) => {
     _introResolve = resolve;
   });
+  lockIntroScroll();
+
+  // ── Tagline setup ──────────────────────────────────────────────────────────
+  const wrapperW = textWrapper.offsetWidth;
+  const wrapperH = textWrapper.offsetHeight;
+  const minDimension = Math.min(wrapperW, wrapperH);
+  const baseRingRadius = clamp(150, minDimension * 0.29, 300);
+  const ringAwareVideoSize =
+    ((baseRingRadius + INITIAL_VIDEO_RING_PADDING) * 2) / INITIAL_VIDEO_MASK_OUTER_RATIO;
+  const baseMinVideoSize = clamp(320, minDimension * 0.66, 720);
+  const minVideoSize =
+    window.innerWidth <= MOBILE_BREAKPOINT
+      ? Math.max(baseMinVideoSize, ringAwareVideoSize)
+      : baseMinVideoSize;
 
   // Make intro visible (Webflow keeps it display:none by default)
-  gsap.set(introEl, { display: 'flex', opacity: 1, overflow: 'hidden' });
+  prepareIntroOverlay(introEl, videoWrapEl);
+  const videoLayout = prepareIntroVideoLayout(videoEl, videoWrapEl, minVideoSize);
+  gsap.to(introEl, { opacity: 1, duration: INTRO_FADE_IN_DUR, ease: 'power2.out' });
 
   // Restructure SVG for icon → wordmark animation
+  prepareIntroLogo(svg, logoEl);
   const { gO, gParen, gClose, utsideRect, erspRect } = restructureLogo(svg);
 
   // Icon mode: groups translated to centre the tight "O(P)" symbol
   gsap.set(gO, { x: O_TX });
   gsap.set(gParen, { x: PAREN_TX });
   gsap.set(gClose, { x: CLOSE_TX });
-
-  gsap.set(videoEl, { filter: 'blur(120px)' });
-
-  // ── Tagline setup ──────────────────────────────────────────────────────────
-  const wrapperW = textWrapper.offsetWidth;
-  const wrapperH = textWrapper.offsetHeight;
+  if (logoEl) gsap.set(logoEl, { opacity: 0 });
 
   // Init video
   const src = videoEl.getAttribute('data-src') || videoEl.getAttribute('src') || '';
-  if (src) attachVideo(videoEl, src);
+  const videoReady = src ? attachVideo(videoEl, src) : Promise.resolve();
+  const startIntro = () => {
+    if (!_introActive || activeTl?.isActive()) return;
+
+    if (logoEl) gsap.set(logoEl, { opacity: 1 });
+    activeTl?.play(0);
+  };
 
   const primaryRowIndex = getPrimaryRowIndex(rows);
 
@@ -882,8 +1044,10 @@ export function initIntroSequence(): void {
       erspRect,
       rows,
       primaryRowIndex,
-      textWrapper
+      textWrapper,
+      videoLayout
     );
+    videoReady.then(startIntro);
     return;
   }
 
@@ -935,8 +1099,10 @@ export function initIntroSequence(): void {
     primaryRowIndex,
     rowWords,
     wrapperW,
-    wrapperH
+    wrapperH,
+    videoLayout
   );
+  videoReady.then(startIntro);
 }
 
 export function destroyIntroSequence(): void {
@@ -944,6 +1110,7 @@ export function destroyIntroSequence(): void {
   activeTl = null;
   activeHls?.destroy();
   activeHls = null;
+  unlockIntroScroll();
 
   if (_introActive) {
     _introActive = false;
