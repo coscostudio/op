@@ -50,7 +50,7 @@ type CircularTextItem = {
   element: HTMLElement;
 };
 
-type IntroRouteVariant = 'default' | 'work';
+type IntroRouteVariant = 'about' | 'default' | 'work';
 type IntroVideoLayout = {
   finalVideoWidth: number;
   initialVideoSize: number;
@@ -146,6 +146,7 @@ function prepareIntroOverlay(introEl: HTMLElement, videoWrapEl: HTMLElement): vo
   gsap.set(introEl, {
     display: 'flex',
     overflow: 'visible',
+    opacity: 0,
   });
 
   if (!isMobile) return;
@@ -344,9 +345,11 @@ function getIntroRouteVariant(): IntroRouteVariant {
     ?.getAttribute('data-barba-namespace');
 
   if (namespace === 'work') return 'work';
+  if (namespace === 'about') return 'about';
 
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
   if (path === '/work') return 'work';
+  if (path === '/about') return 'about';
 
   return 'default';
 }
@@ -356,7 +359,7 @@ function selectIntroTextWrapper(
   routeVariant: IntroRouteVariant
 ): HTMLElement | null {
   const wrappers = Array.from(introEl.querySelectorAll<HTMLElement>('.intro-text-wrapper'));
-  const variantName = routeVariant === 'work' ? 'work' : 'home';
+  const variantName = routeVariant === 'work' || routeVariant === 'about' ? 'work' : 'home';
   const activeWrapper =
     wrappers.find((wrapper) => wrapper.getAttribute('intro-variant') === variantName) ??
     wrappers.find((wrapper) => wrapper.getAttribute('intro-variant') === 'home') ??
@@ -390,113 +393,164 @@ function getPrimaryRowIndex(rows: HTMLElement[]): number {
       : Math.min(FALLBACK_PRIMARY_ROW, rows.length - 1);
 }
 
-function prepareStraightRow(
-  row: HTMLElement,
-  wrapper: HTMLElement,
-  anchor: 'bottom' | 'center'
-): void {
-  gsap.set(wrapper, {
-    display: 'flex',
+function readableTangentRotation(angleDeg: number): number {
+  return angleDeg + 90;
+}
+
+function getClockPoint(radius: number, angleDeg: number): { x: number; y: number } {
+  const radians = (angleDeg * Math.PI) / 180;
+
+  return {
+    x: Math.cos(radians) * radius,
+    y: Math.sin(radians) * radius,
+  };
+}
+
+function getClockAngle(rank: number, totalSlots: number, rotationOffset = 0): number {
+  const step = 360 / Math.max(totalSlots, 1);
+
+  return 180 - rank * step - rotationOffset;
+}
+
+function prepareClockWords(
+  rows: HTMLElement[],
+  primaryRowIndex: number,
+  textWrapper: HTMLElement
+): HTMLElement[] {
+  const primaryRow = rows[primaryRowIndex];
+  if (!primaryRow) return [];
+
+  rows.forEach((row, i) => {
+    if (i === primaryRowIndex) return;
+    gsap.set(row, { display: 'none', opacity: 0 });
+  });
+
+  gsap.set(textWrapper, {
+    display: 'block',
     overflow: 'visible',
   });
-  gsap.set(row, {
-    bottom: anchor === 'bottom' ? 'clamp(1rem, 8vh, 7rem)' : 'auto',
-    clearProps: 'gap',
-    display: 'flex',
-    inset: 'auto',
-    justifyContent: 'space-between',
+  gsap.set(primaryRow, {
+    bottom: 0,
+    clearProps: 'inset,transform,x,y,xPercent,yPercent',
+    display: 'block',
+    height: '100%',
     left: 0,
+    minHeight: '100%',
     opacity: 1,
     pointerEvents: 'none',
     position: 'absolute',
-    top: anchor === 'bottom' ? 'auto' : '50%',
-    transformOrigin: '50% 50%',
-    whiteSpace: 'nowrap',
+    right: 0,
+    top: 0,
     width: '100%',
-    willChange: 'transform, opacity',
-    xPercent: 0,
-    yPercent: anchor === 'bottom' ? 0 : -50,
   });
-  gsap.set(row.querySelectorAll<HTMLElement>('.intro-text'), {
-    clearProps: 'left,top,x,y,xPercent,yPercent,rotation,position',
-    opacity: 1,
-  });
-}
 
-function setWorkRowCopy(row: HTMLElement): void {
-  const copy = ['creative', 'and', 'production', 'studio'];
-  let words = Array.from(row.querySelectorAll<HTMLElement>('.intro-text'));
+  const words = Array.from(primaryRow.querySelectorAll<HTMLElement>('.intro-text'));
 
-  while (words.length < copy.length) {
-    const word = document.createElement('div');
-    word.className = 'intro-text';
-    row.appendChild(word);
-    words.push(word);
-  }
-
-  const extraWords = words.slice(copy.length);
-  extraWords.forEach((word) => word.remove());
-  words = words.slice(0, copy.length);
-
-  words.forEach((word, i) => {
-    let textEl = word.firstElementChild instanceof HTMLElement ? word.firstElementChild : null;
-
-    if (!textEl) {
-      textEl = document.createElement('div');
-      word.textContent = '';
-      word.appendChild(textEl);
-    }
-
-    textEl.textContent = copy[i] ?? '';
-    gsap.set(word, { clearProps: 'all' });
-    gsap.set(textEl, { clearProps: 'all' });
-  });
-}
-
-function prepareInlineTextChars(row: HTMLElement): HTMLSpanElement[] {
-  const chars: HTMLSpanElement[] = [];
-
-  row.querySelectorAll<HTMLElement>('.intro-text').forEach((word) => {
-    const textEl = word.firstElementChild instanceof HTMLElement ? word.firstElementChild : word;
-    const text = textEl.textContent ?? '';
-    const wordChars = Array.from(text).map((char) => {
-      const span = document.createElement('span');
-      span.dataset.introChar = '';
-      span.textContent = char === ' ' ? '\u00a0' : char;
-      span.style.display = 'inline-block';
-      span.style.whiteSpace = 'pre';
-      return span;
+  words.forEach((word) => {
+    gsap.set(word, {
+      left: '50%',
+      opacity: 0,
+      position: 'absolute',
+      rotation: 0,
+      top: '50%',
+      transformOrigin: '50% 50%',
+      whiteSpace: 'nowrap',
+      willChange: 'transform, opacity',
+      xPercent: -50,
+      yPercent: -50,
     });
-
-    textEl.textContent = '';
-    wordChars.forEach((span) => textEl.appendChild(span));
-    chars.push(...wordChars);
   });
 
-  return chars;
+  return words;
 }
 
-function cloneStraightRows(
-  primaryRow: HTMLElement,
-  textWrapper: HTMLElement,
-  cloneCount: number,
-  anchor: 'bottom' | 'center'
+function cloneClockRowFromHomeIntro(introEl: HTMLElement): HTMLElement | null {
+  const homeWrapper = introEl.querySelector<HTMLElement>(
+    '.intro-text-wrapper[intro-variant="home"]'
+  );
+  const homeRows = homeWrapper
+    ? Array.from(homeWrapper.querySelectorAll<HTMLElement>('.intro-text-row'))
+    : [];
+  const homePrimaryRow = homeRows[getPrimaryRowIndex(homeRows)];
+
+  if (!homePrimaryRow) return null;
+
+  const clockRow = homePrimaryRow.cloneNode(true) as HTMLElement;
+  clockRow.setAttribute('aria-hidden', 'true');
+  clockRow.dataset.introClockSource = 'home';
+
+  return clockRow;
+}
+
+function createLineIntroRow(textWrapper: HTMLElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'intro-text-row center';
+  row.dataset.introLineSource = 'about';
+
+  ['creative', 'and', 'production', 'studio'].forEach((copy) => {
+    const word = document.createElement('div');
+    const text = document.createElement('div');
+    word.className = 'intro-text';
+    text.textContent = copy;
+    word.appendChild(text);
+    row.appendChild(word);
+  });
+
+  textWrapper.appendChild(row);
+
+  return row;
+}
+
+function prepareLineWords(
+  rows: HTMLElement[],
+  primaryRowIndex: number,
+  textWrapper: HTMLElement
 ): HTMLElement[] {
-  return Array.from({ length: cloneCount }, (_, i) => {
-    const clone = primaryRow.cloneNode(true) as HTMLElement;
-    clone.setAttribute('aria-hidden', 'true');
-    clone.classList.add('intro-text-row-duplicate');
-    clone.dataset.introDuplicate = String(i + 1);
-    textWrapper.appendChild(clone);
-    prepareStraightRow(clone, textWrapper, anchor);
-    gsap.set(clone.querySelectorAll<HTMLElement>('[data-intro-char]'), { opacity: 1 });
-    gsap.set(clone, { opacity: 0, y: 0 });
-    return clone;
-  });
-}
+  const primaryRow = rows[primaryRowIndex];
+  if (!primaryRow) return [];
 
-function readableTangentRotation(angleDeg: number): number {
-  return angleDeg + 90;
+  rows.forEach((row, i) => {
+    if (i === primaryRowIndex) return;
+    gsap.set(row, { display: 'none', opacity: 0 });
+  });
+
+  gsap.set(textWrapper, {
+    display: 'block',
+    overflow: 'visible',
+  });
+  gsap.set(primaryRow, {
+    bottom: 0,
+    clearProps: 'inset,transform,x,y,xPercent,yPercent',
+    display: 'block',
+    height: '100%',
+    left: 0,
+    minHeight: '100%',
+    opacity: 1,
+    pointerEvents: 'none',
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: '100%',
+  });
+
+  const words = Array.from(primaryRow.querySelectorAll<HTMLElement>('.intro-text'));
+
+  words.forEach((word) => {
+    gsap.set(word, {
+      left: '50%',
+      opacity: 0,
+      position: 'absolute',
+      rotation: 0,
+      top: '50%',
+      transformOrigin: '50% 50%',
+      whiteSpace: 'nowrap',
+      willChange: 'transform, opacity',
+      xPercent: -50,
+      yPercent: -50,
+    });
+  });
+
+  return words;
 }
 
 function prepareCircularTextItems(words: HTMLElement[]): CircularTextItem[] {
@@ -777,7 +831,7 @@ function runTimeline(
   tl.to(introEl, { opacity: 0, duration: 0.62, ease: EASE_IN }, FILL_T - 0.48);
 }
 
-function runVerticalTimeline(
+function runClockTimeline(
   introEl: HTMLElement,
   videoEl: HTMLVideoElement,
   videoWrapEl: HTMLElement,
@@ -804,44 +858,306 @@ function runVerticalTimeline(
   const EASE_IN = 'power3.in';
   const REVEAL_T = 0.5;
   const REVEAL_DUR = 0.5;
-  const ROW_REVEAL_T = 1.2;
-  const CHAR_FADE_DUR = 0.16;
-  const CHAR_STAGGER = 0.025;
-  const EXPLODE_T = 2.05;
-  const EXPLODE_DUR = 1.38;
-  const LOGO_LEAVE_T = EXPLODE_T + 0.12;
-  const LOGO_LEAVE_DUR = 0.78;
-  const FILL_T = EXPLODE_T + 0.35;
+  const WORD_START_T = 1.24;
+  const WORD_GAP = 0.8;
+  const WORD_ENTER_DUR = 0.46;
+  const CLOCK_DRIFT_DEG = 14;
+  const IMPLODE_DELAY = WORD_GAP;
+  const IMPLODE_DUR = 0.52;
+  const LOGO_LEAVE_DUR = 0.72;
   const FILL_DUR = 1.05;
-  const FADE_T = EXPLODE_T + 1.28;
+  const FADE_DUR = 0.62;
+  const FADE_OFFSET = 0.46;
+  const spikeEase = 'expo.out';
 
-  const viewportH = window.innerHeight;
+  const wrapperW = textWrapper.offsetWidth;
+  const wrapperH = textWrapper.offsetHeight;
+  const radius = clamp(112, Math.min(wrapperW, wrapperH) * 0.26, 260);
   const { finalVideoWidth } = videoLayout;
-  const primaryRow = rows[primaryRowIndex];
-  if (primaryRow) setWorkRowCopy(primaryRow);
-  const primaryChars = primaryRow ? prepareInlineTextChars(primaryRow) : [];
-  const duplicateCount = clamp(36, Math.round(viewportH / 14), 64);
-  const duplicates = primaryRow
-    ? cloneStraightRows(primaryRow, textWrapper, duplicateCount, 'bottom')
-    : [];
-  const allStraightRows = primaryRow ? [primaryRow, ...duplicates] : duplicates;
-  const rowHeight = primaryRow?.offsetHeight || 24;
-  const rowGap = clamp(rowHeight * 0.9, viewportH / 42, rowHeight * 1.35);
+  const words = prepareClockWords(rows, primaryRowIndex, textWrapper);
+  const totalClockSlots = words.length;
+  const clockStep = 360 / Math.max(totalClockSlots, 1);
+  const clockDriftSlots = CLOCK_DRIFT_DEG / clockStep;
+  const clockState = { baseAdvance: 0, enteringIndex: -1, slotPosition: 0, visibleUntil: -1 };
+  const applyClockLayout = () => {
+    const trackPosition = clockState.slotPosition + clockState.baseAdvance;
 
-  rows.forEach((row, i) => {
-    if (i === primaryRowIndex) return;
-    gsap.set(row, { display: 'none', opacity: 0 });
-  });
-  if (primaryRow) {
-    prepareStraightRow(primaryRow, textWrapper, 'bottom');
-    gsap.set(primaryRow, { opacity: 0, scale: 0.98, y: 0 });
-    gsap.set(primaryChars, { opacity: 0, yPercent: 20 });
-  }
+    words.forEach((word, wordIndex) => {
+      if (wordIndex > clockState.visibleUntil) return;
+      if (wordIndex === clockState.enteringIndex) return;
+
+      const point = getClockPoint(
+        radius,
+        getClockAngle(trackPosition - wordIndex, totalClockSlots)
+      );
+      gsap.set(word, { x: point.x, y: point.y });
+    });
+  };
+  const finalEntryT = WORD_START_T + Math.max(words.length - 1, 0) * WORD_GAP;
+  const IMPLODE_T = finalEntryT + IMPLODE_DELAY;
+  const FILL_T = IMPLODE_T;
+  const FADE_T = IMPLODE_T + FADE_OFFSET;
+  const cleanupT = FADE_T + FADE_DUR;
+  const baseSpinEndT = IMPLODE_T + IMPLODE_DUR;
+  const baseSpinDur = Math.max(0.1, baseSpinEndT - WORD_START_T);
+  const getBaseAdvanceAt = (time: number) =>
+    clockDriftSlots * clamp(0, (time - WORD_START_T) / baseSpinDur, 1);
 
   tl.to(
     videoEl,
-    { filter: 'blur(0px)', duration: FILL_T + FILL_DUR - ROW_REVEAL_T, ease: 'power2.out' },
-    ROW_REVEAL_T
+    {
+      filter: 'blur(0px)',
+      duration: Math.max(0.1, FILL_T + FILL_DUR - WORD_START_T),
+      ease: 'power2.out',
+    },
+    WORD_START_T
+  );
+
+  const maskState = { inner: 40, outer: 72 };
+  const updateMask = () => {
+    const grad = `radial-gradient(circle, black ${maskState.inner.toFixed(1)}%, transparent ${maskState.outer.toFixed(1)}%)`;
+    videoWrapEl.style.maskImage = grad;
+    (videoWrapEl.style as CSSStyleDeclaration & { WebkitMaskImage: string }).WebkitMaskImage = grad;
+  };
+  tl.to(
+    maskState,
+    {
+      inner: 100,
+      outer: 150,
+      duration: FILL_DUR,
+      ease: 'power2.inOut',
+      onUpdate: updateMask,
+    },
+    FILL_T
+  );
+  tl.to(
+    videoWrapEl,
+    { height: finalVideoWidth, width: finalVideoWidth, duration: FILL_DUR, ease: 'power2.inOut' },
+    FILL_T
+  );
+  tl.to(videoEl, { scale: 1.35, duration: FILL_DUR, ease: 'power2.out' }, FILL_T);
+
+  // Logo starts as the centered icon, then opens just like the main circle intro.
+  tl.to(gO, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
+  tl.to(gParen, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
+  tl.to(gClose, { x: 0, duration: REVEAL_DUR, ease: EASE_OUT }, REVEAL_T);
+  tl.to(
+    utsideRect,
+    { attr: { x: O_RIGHT, width: UTSIDE_CLIP_W_FINAL }, duration: REVEAL_DUR, ease: EASE_OUT },
+    REVEAL_T
+  );
+  tl.to(
+    erspRect,
+    { attr: { width: ERSP_CLIP_W_FINAL }, duration: REVEAL_DUR, ease: EASE_OUT },
+    REVEAL_T
+  );
+
+  tl.to(
+    clockState,
+    {
+      baseAdvance: clockDriftSlots,
+      duration: baseSpinDur,
+      ease: 'none',
+      onUpdate: applyClockLayout,
+    },
+    WORD_START_T
+  );
+
+  words.forEach((word, wordIndex) => {
+    const entryT = WORD_START_T + wordIndex * WORD_GAP;
+    const joinT = entryT + WORD_ENTER_DUR;
+    const gatePoint = getClockPoint(radius, 180);
+
+    tl.add(() => {
+      clockState.visibleUntil = wordIndex;
+      clockState.enteringIndex = wordIndex;
+      gsap.set(word, { x: gatePoint.x - 28, y: gatePoint.y + 2, opacity: 0 });
+      applyClockLayout();
+    }, entryT);
+    tl.to(
+      clockState,
+      {
+        slotPosition: wordIndex - getBaseAdvanceAt(joinT),
+        duration: WORD_ENTER_DUR,
+        ease: spikeEase,
+        onUpdate: applyClockLayout,
+      },
+      entryT
+    );
+    tl.to(
+      word,
+      {
+        x: gatePoint.x,
+        y: gatePoint.y,
+        opacity: 1,
+        duration: WORD_ENTER_DUR,
+        ease: spikeEase,
+      },
+      entryT
+    );
+    tl.add(() => {
+      clockState.enteringIndex = -1;
+      applyClockLayout();
+    }, joinT);
+  });
+
+  words.forEach((word) => {
+    const stagger = Math.random() * 0.16;
+    const direction = Math.random() > 0.5 ? 1 : -1;
+
+    tl.to(
+      word,
+      {
+        x: direction * gsap.utils.random(2, 16),
+        y: gsap.utils.random(-8, 8),
+        scale: 0.24,
+        opacity: 0,
+        duration: IMPLODE_DUR,
+        ease: 'power4.in',
+      },
+      IMPLODE_T + stagger
+    );
+  });
+
+  if (logoEl) {
+    tl.to(logoEl, { opacity: 0, scale: 0.92, duration: FADE_DUR, ease: EASE_IN }, FADE_T);
+  }
+  tl.to(gO, { x: O_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
+  tl.to(gParen, { x: PAREN_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
+  tl.to(gClose, { x: CLOSE_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
+  tl.to(
+    utsideRect,
+    {
+      attr: { x: UTSIDE_CLIP_X_ICON, width: 0 },
+      duration: LOGO_LEAVE_DUR,
+      ease: EASE_IN_OUT,
+    },
+    IMPLODE_T
+  );
+  tl.to(erspRect, { attr: { width: 0 }, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
+
+  tl.to(introEl, { opacity: 0, duration: 0.62, ease: EASE_IN }, FADE_T);
+  tl.add(() => words.forEach((word) => gsap.set(word, { clearProps: 'willChange' })), cleanupT);
+}
+
+function runLineTimeline(
+  introEl: HTMLElement,
+  videoEl: HTMLVideoElement,
+  videoWrapEl: HTMLElement,
+  logoEl: HTMLElement | null,
+  gO: SVGGElement,
+  gParen: SVGGElement,
+  gClose: SVGGElement,
+  utsideRect: SVGRectElement,
+  erspRect: SVGRectElement,
+  rows: HTMLElement[],
+  primaryRowIndex: number,
+  textWrapper: HTMLElement,
+  videoLayout: IntroVideoLayout
+): void {
+  const tl = gsap.timeline({
+    defaults: { ease: 'power3.inOut' },
+    onComplete: () => cleanup(introEl),
+    paused: true,
+  });
+  activeTl = tl;
+
+  const EASE_OUT = 'power3.out';
+  const EASE_IN_OUT = 'power3.inOut';
+  const EASE_IN = 'power3.in';
+  const REVEAL_T = 0.5;
+  const REVEAL_DUR = 0.5;
+  const WORD_START_T = 1.24;
+  const WORD_GAP = 0.8;
+  const WORD_ENTER_DUR = 0.46;
+  const LINE_START_X = 22;
+  const LINE_END_X = -8;
+  const IMPLODE_DELAY = WORD_GAP;
+  const IMPLODE_DUR = 0.48;
+  const LOGO_LEAVE_DUR = 0.72;
+  const FILL_DUR = 1.05;
+  const FADE_DUR = 0.62;
+  const FADE_OFFSET = 0.46;
+
+  const wrapperW = textWrapper.offsetWidth || window.innerWidth;
+  const wrapperH = textWrapper.offsetHeight || window.innerHeight;
+  const gap = clamp(8, wrapperW * 0.01, 18);
+  const logoRect = logoEl?.getBoundingClientRect();
+  const wrapperRect = textWrapper.getBoundingClientRect();
+  const lineY = logoRect
+    ? logoRect.bottom - (wrapperRect.top + wrapperH / 2) + clamp(26, wrapperH * 0.055, 58)
+    : clamp(52, wrapperH * 0.1, 90);
+  const { finalVideoWidth } = videoLayout;
+  const words = prepareLineWords(rows, primaryRowIndex, textWrapper);
+  const wordWidths = words.map((word) => word.offsetWidth || 24);
+  const lineState = { enteringIndex: -1, flowX: LINE_START_X, layout: 0 };
+  const entryOffsets = words.map(() => ({ x: 0 }));
+  const getLineWordCenter = (latestIndex: number, targetIndex: number, flowX: number) => {
+    const totalWidth =
+      wordWidths.slice(0, latestIndex + 1).reduce((sum, width) => sum + width, 0) +
+      gap * Math.max(0, latestIndex);
+    let cursor = -totalWidth / 2;
+
+    for (let wordIndex = 0; wordIndex < targetIndex; wordIndex += 1) {
+      cursor += wordWidths[wordIndex] + gap;
+    }
+
+    return cursor + wordWidths[targetIndex] / 2 + flowX;
+  };
+  const applyLineLayout = () => {
+    const layout = clamp(0, lineState.layout, Math.max(words.length - 1, 0));
+    const baseIndex = Math.floor(layout);
+    const nextIndex = Math.min(Math.ceil(layout), words.length - 1);
+    const fraction = nextIndex === baseIndex ? 1 : layout - baseIndex;
+    const includedLastIndex = nextIndex;
+    const effectiveWidths = wordWidths.map((width, wordIndex) => {
+      if (wordIndex <= baseIndex) return width;
+      if (wordIndex === nextIndex) return width * Math.max(0.001, fraction);
+      return 0;
+    });
+    const totalWidth =
+      effectiveWidths.slice(0, includedLastIndex + 1).reduce((sum, width) => sum + width, 0) +
+      gap * Math.max(0, baseIndex) +
+      (nextIndex > baseIndex ? gap * fraction : 0);
+    let cursor = -totalWidth / 2;
+
+    for (let wordIndex = 0; wordIndex <= includedLastIndex; wordIndex += 1) {
+      if (wordIndex === lineState.enteringIndex) {
+        cursor += effectiveWidths[wordIndex];
+        if (wordIndex < baseIndex) cursor += gap;
+        else if (wordIndex === baseIndex && nextIndex > baseIndex) cursor += gap * fraction;
+        continue;
+      }
+
+      const effectiveWidth = effectiveWidths[wordIndex];
+      const centerX = cursor + effectiveWidth / 2 + lineState.flowX + entryOffsets[wordIndex].x;
+
+      gsap.set(words[wordIndex], { x: centerX, y: lineY });
+      cursor += effectiveWidth;
+      if (wordIndex < baseIndex) cursor += gap;
+      else if (wordIndex === baseIndex && nextIndex > baseIndex) cursor += gap * fraction;
+    }
+  };
+  const finalEntryT = WORD_START_T + Math.max(words.length - 1, 0) * WORD_GAP;
+  const IMPLODE_T = finalEntryT + IMPLODE_DELAY;
+  const FILL_T = IMPLODE_T;
+  const FADE_T = IMPLODE_T + FADE_OFFSET;
+  const cleanupT = FADE_T + FADE_DUR;
+  const getFlowXAt = (time: number) => {
+    const flowEndT = IMPLODE_T + IMPLODE_DUR * 0.35;
+    const progress = clamp(0, (time - WORD_START_T) / Math.max(0.1, flowEndT - WORD_START_T), 1);
+
+    return LINE_START_X + (LINE_END_X - LINE_START_X) * progress;
+  };
+
+  tl.to(
+    videoEl,
+    {
+      filter: 'blur(0px)',
+      duration: Math.max(0.1, FILL_T + FILL_DUR - WORD_START_T),
+      ease: 'power2.out',
+    },
+    WORD_START_T
   );
 
   const maskState = { inner: 40, outer: 72 };
@@ -882,68 +1198,80 @@ function runVerticalTimeline(
     REVEAL_T
   );
 
-  if (primaryRow) {
-    tl.to(primaryRow, { opacity: 1, scale: 1, duration: 0.36, ease: EASE_OUT }, ROW_REVEAL_T);
-  }
-  if (primaryChars.length) {
+  tl.to(
+    lineState,
+    {
+      flowX: LINE_END_X,
+      duration: Math.max(0.1, IMPLODE_T + IMPLODE_DUR * 0.35 - WORD_START_T),
+      ease: 'none',
+      onUpdate: applyLineLayout,
+    },
+    WORD_START_T
+  );
+
+  words.forEach((word, wordIndex) => {
+    const entryT = WORD_START_T + wordIndex * WORD_GAP;
+    const joinT = entryT + WORD_ENTER_DUR;
+    const flowAtJoin = getFlowXAt(joinT);
+    const joinX = getLineWordCenter(wordIndex, wordIndex, flowAtJoin);
+
+    tl.add(() => {
+      lineState.enteringIndex = wordIndex;
+      entryOffsets[wordIndex].x = 0;
+      gsap.set(word, { x: joinX + 30, y: lineY, opacity: 0 });
+      applyLineLayout();
+    }, entryT);
     tl.to(
-      primaryChars,
+      lineState,
       {
+        layout: wordIndex,
+        duration: WORD_ENTER_DUR,
+        ease: 'expo.out',
+        onUpdate: applyLineLayout,
+      },
+      entryT
+    );
+    tl.to(
+      word,
+      {
+        x: joinX,
+        y: lineY,
         opacity: 1,
-        yPercent: 0,
-        duration: CHAR_FADE_DUR,
-        ease: EASE_OUT,
-        stagger: CHAR_STAGGER,
+        duration: WORD_ENTER_DUR,
+        ease: 'expo.out',
       },
-      ROW_REVEAL_T
+      entryT
     );
-  }
+    tl.add(() => {
+      lineState.enteringIndex = -1;
+      lineState.layout = wordIndex;
+      applyLineLayout();
+    }, joinT);
+  });
 
-  duplicates.forEach((row, i) => {
-    const rank = i + 1;
-    const targetY = -rank * rowGap;
-    const startTime = EXPLODE_T + Math.min(rank * 0.01, 0.22);
+  words.forEach((word) => {
+    const stagger = Math.random() * 0.14;
 
-    gsap.set(row, {
-      opacity: 0,
-      y: 0,
-      zIndex: duplicateCount - i,
-    });
-    tl.to(row, { opacity: 1, duration: 0.08, ease: EASE_OUT }, startTime);
     tl.to(
-      row,
+      word,
       {
-        y: targetY,
-        duration: EXPLODE_DUR + rank * 0.006,
-        ease: 'power3.inOut',
+        x: gsap.utils.random(-6, 6),
+        y: gsap.utils.random(-4, 4),
+        scale: 0.18,
+        opacity: 0,
+        duration: IMPLODE_DUR,
+        ease: 'power3.in',
       },
-      startTime
-    );
-    tl.to(
-      row,
-      { opacity: 0, duration: 0.36, ease: EASE_IN },
-      startTime + EXPLODE_DUR * 0.78 + rank * 0.004
+      IMPLODE_T + stagger
     );
   });
 
-  if (primaryRow) {
-    tl.to(
-      primaryRow,
-      { opacity: 0, y: -viewportH * 0.08, duration: EXPLODE_DUR * 0.55, ease: EASE_IN },
-      EXPLODE_T + 0.58
-    );
-  }
-
   if (logoEl) {
-    tl.to(
-      logoEl,
-      { opacity: 0, scale: 0.92, duration: LOGO_LEAVE_DUR, ease: EASE_IN },
-      LOGO_LEAVE_T + 0.1
-    );
+    tl.to(logoEl, { opacity: 0, scale: 0.92, duration: FADE_DUR, ease: EASE_IN }, FADE_T);
   }
-  tl.to(gO, { x: O_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, LOGO_LEAVE_T);
-  tl.to(gParen, { x: PAREN_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, LOGO_LEAVE_T);
-  tl.to(gClose, { x: CLOSE_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, LOGO_LEAVE_T);
+  tl.to(gO, { x: O_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
+  tl.to(gParen, { x: PAREN_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
+  tl.to(gClose, { x: CLOSE_TX, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
   tl.to(
     utsideRect,
     {
@@ -951,16 +1279,12 @@ function runVerticalTimeline(
       duration: LOGO_LEAVE_DUR,
       ease: EASE_IN_OUT,
     },
-    LOGO_LEAVE_T
+    IMPLODE_T
   );
-  tl.to(
-    erspRect,
-    { attr: { width: 0 }, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT },
-    LOGO_LEAVE_T
-  );
+  tl.to(erspRect, { attr: { width: 0 }, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
 
-  tl.to(introEl, { opacity: 0, duration: 0.62, ease: EASE_IN }, FADE_T);
-  tl.add(() => allStraightRows.forEach((row) => gsap.set(row, { clearProps: 'willChange' })));
+  tl.to(introEl, { opacity: 0, duration: FADE_DUR, ease: EASE_IN }, FADE_T);
+  tl.add(() => words.forEach((word) => gsap.set(word, { clearProps: 'willChange' })), cleanupT);
 }
 
 export function initIntroSequence(): void {
@@ -1010,7 +1334,6 @@ export function initIntroSequence(): void {
   // Make intro visible (Webflow keeps it display:none by default)
   prepareIntroOverlay(introEl, videoWrapEl);
   const videoLayout = prepareIntroVideoLayout(videoEl, videoWrapEl, minVideoSize);
-  gsap.to(introEl, { opacity: 1, duration: INTRO_FADE_IN_DUR, ease: 'power2.out' });
 
   // Restructure SVG for icon → wordmark animation
   prepareIntroLogo(svg, logoEl);
@@ -1020,7 +1343,7 @@ export function initIntroSequence(): void {
   gsap.set(gO, { x: O_TX });
   gsap.set(gParen, { x: PAREN_TX });
   gsap.set(gClose, { x: CLOSE_TX });
-  if (logoEl) gsap.set(logoEl, { opacity: 0 });
+  if (logoEl) gsap.set(logoEl, { opacity: 1 });
 
   // Init video
   const src = videoEl.getAttribute('data-src') || videoEl.getAttribute('src') || '';
@@ -1028,14 +1351,21 @@ export function initIntroSequence(): void {
   const startIntro = () => {
     if (!_introActive || activeTl?.isActive()) return;
 
-    if (logoEl) gsap.set(logoEl, { opacity: 1 });
+    gsap.to(introEl, { opacity: 1, duration: INTRO_FADE_IN_DUR, ease: 'power2.out' });
     activeTl?.play(0);
   };
 
-  const primaryRowIndex = getPrimaryRowIndex(rows);
+  let activeRows = rows;
+  let primaryRowIndex = getPrimaryRowIndex(activeRows);
 
-  if (routeVariant === 'work') {
-    runVerticalTimeline(
+  if (routeVariant === 'about') {
+    rows.forEach((row) => gsap.set(row, { display: 'none', opacity: 0 }));
+
+    const lineRow = createLineIntroRow(textWrapper);
+    activeRows = [lineRow];
+    primaryRowIndex = 0;
+
+    runLineTimeline(
       introEl,
       videoEl,
       videoWrapEl,
@@ -1045,7 +1375,36 @@ export function initIntroSequence(): void {
       gClose,
       utsideRect,
       erspRect,
-      rows,
+      activeRows,
+      primaryRowIndex,
+      textWrapper,
+      videoLayout
+    );
+    videoReady.then(startIntro);
+    return;
+  }
+
+  if (routeVariant === 'work') {
+    const clockRow = cloneClockRowFromHomeIntro(introEl);
+
+    if (clockRow) {
+      rows.forEach((row) => gsap.set(row, { display: 'none', opacity: 0 }));
+      textWrapper.appendChild(clockRow);
+      activeRows = [clockRow];
+      primaryRowIndex = 0;
+    }
+
+    runClockTimeline(
+      introEl,
+      videoEl,
+      videoWrapEl,
+      logoEl,
+      gO,
+      gParen,
+      gClose,
+      utsideRect,
+      erspRect,
+      activeRows,
       primaryRowIndex,
       textWrapper,
       videoLayout
