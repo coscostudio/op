@@ -44,6 +44,7 @@ const INITIAL_VIDEO_MASK_OUTER_RATIO = 0.72;
 const INITIAL_VIDEO_RING_PADDING = 80;
 const INTRO_MOBILE_OVERSCAN_REM = 14;
 const MOBILE_BREAKPOINT = 767;
+const FORCE_LINE_INTRO = true;
 
 type CircularTextItem = {
   chars: HTMLSpanElement[];
@@ -859,10 +860,10 @@ function runClockTimeline(
   const REVEAL_T = 0.5;
   const REVEAL_DUR = 0.5;
   const WORD_START_T = 1.24;
-  const WORD_GAP = 0.8;
+  const WORD_GAP = 0.45;
   const WORD_ENTER_DUR = 0.46;
   const CLOCK_DRIFT_DEG = 14;
-  const IMPLODE_DELAY = WORD_GAP;
+  const IMPLODE_DELAY = WORD_ENTER_DUR + 0.24;
   const IMPLODE_DUR = 0.52;
   const LOGO_LEAVE_DUR = 0.72;
   const FILL_DUR = 1.05;
@@ -1068,8 +1069,10 @@ function runLineTimeline(
   const REVEAL_T = 0.5;
   const REVEAL_DUR = 0.5;
   const WORD_START_T = 1.24;
-  const WORD_GAP = 0.8;
-  const WORD_ENTER_DUR = 0.46;
+  const WORD_GAP = 0.4;
+  const WORD_ENTER_DUR = 0.32;
+  const WORD_ENTER_X = 18;
+  const WORD_EASE = 'power3.out';
   const LINE_START_X = 22;
   const LINE_END_X = -8;
   const IMPLODE_DELAY = WORD_GAP;
@@ -1218,7 +1221,7 @@ function runLineTimeline(
     tl.add(() => {
       lineState.enteringIndex = wordIndex;
       entryOffsets[wordIndex].x = 0;
-      gsap.set(word, { x: joinX + 30, y: lineY, opacity: 0 });
+      gsap.set(word, { x: joinX + WORD_ENTER_X, y: lineY, opacity: 0 });
       applyLineLayout();
     }, entryT);
     tl.to(
@@ -1226,7 +1229,7 @@ function runLineTimeline(
       {
         layout: wordIndex,
         duration: WORD_ENTER_DUR,
-        ease: 'expo.out',
+        ease: WORD_EASE,
         onUpdate: applyLineLayout,
       },
       entryT
@@ -1238,7 +1241,7 @@ function runLineTimeline(
         y: lineY,
         opacity: 1,
         duration: WORD_ENTER_DUR,
-        ease: 'expo.out',
+        ease: WORD_EASE,
       },
       entryT
     );
@@ -1290,7 +1293,7 @@ function runLineTimeline(
 export function initIntroSequence(): void {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-  const routeVariant = getIntroRouteVariant();
+  const routeVariant: IntroRouteVariant = FORCE_LINE_INTRO ? 'about' : getIntroRouteVariant();
 
   const introEl = document.querySelector<HTMLElement>('.intro');
   if (!introEl) return;
@@ -1308,7 +1311,7 @@ export function initIntroSequence(): void {
     return;
   }
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && routeVariant !== 'about') {
     return;
   }
 
