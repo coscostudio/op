@@ -3,6 +3,7 @@ import gsap from 'gsap';
 import { destroyCaseSliders, initCaseSliders } from './caseSlider';
 import { waitForIntro } from './introSequence';
 import { destroyLoopSlider, initLoopSlider, remeasureLoopSlider } from './loopSlider';
+import { destroyRenderToReality, initRenderToReality } from './renderToReality';
 import {
   destroyHomeVideoPlayers,
   destroyPageVideoPlayers,
@@ -173,10 +174,12 @@ export const barbaViews = [
       destroyPageVideoPlayers();
       initPageVideoPlayers(next.container);
       initCaseSliders();
+      initRenderToReality(next.container);
     },
 
     beforeLeave() {
       destroyCaseSliders();
+      destroyRenderToReality();
       destroyPageVideoPlayers();
     },
   },

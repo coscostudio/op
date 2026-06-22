@@ -8,6 +8,7 @@ import { barbaViews } from './features/barbaViews';
 import { destroyIntroSequence, initIntroSequence } from './features/introSequence';
 import { closeMobileNav, initMobileNav } from './features/mobileNav';
 import { updateNavCurrentState } from './features/nav';
+import { initRenderToReality } from './features/renderToReality';
 import { getStoredWorkViewMode, initWorkView } from './features/workView';
 
 window.Webflow ||= [];
@@ -100,6 +101,8 @@ window.Webflow.push(() => {
           onComplete: () => initWorkView(barbaContainer),
         });
       }
+    } else if (namespace === 'cases') {
+      initRenderToReality(barbaContainer);
     }
   });
 });
