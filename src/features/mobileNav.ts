@@ -10,6 +10,16 @@ let allLinks: HTMLElement[] = [];
 let activeTl: gsap.core.Timeline | null = null;
 let cleanupFns: Array<() => void> = [];
 
+const DRAWER_PADDING_PROPS = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];
+const DRAWER_PADDING_CLEAR_PROPS = DRAWER_PADDING_PROPS.join(',');
+const DRAWER_MEASURE_CLEAR_PROPS = 'position,visibility,pointerEvents';
+const ZERO_DRAWER_PADDING = {
+  paddingTop: 0,
+  paddingRight: 0,
+  paddingBottom: 0,
+  paddingLeft: 0,
+};
+
 const getMotionDuration = () =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : NAV_MOTION_DURATION;
 
@@ -18,33 +28,88 @@ const resetActiveTimeline = () => {
   activeTl = null;
 };
 
+const getDrawerPadding = (useNaturalPadding = false) => {
+  if (!wrapper) return ZERO_DRAWER_PADDING;
+
+  if (useNaturalPadding) {
+    gsap.set(wrapper, { clearProps: DRAWER_PADDING_CLEAR_PROPS });
+  }
+
+  const styles = window.getComputedStyle(wrapper);
+
+  return {
+    paddingTop: styles.paddingTop,
+    paddingRight: styles.paddingRight,
+    paddingBottom: styles.paddingBottom,
+    paddingLeft: styles.paddingLeft,
+  };
+};
+
+const measureOpenDrawerHeight = (targetPadding: gsap.TweenVars) => {
+  if (!wrapper) return 0;
+
+  gsap.set(wrapper, {
+    display: 'flex',
+    height: 'auto',
+    opacity: 1,
+    overflow: 'hidden',
+    pointerEvents: 'none',
+    position: 'absolute',
+    visibility: 'hidden',
+    ...targetPadding,
+  });
+
+  return wrapper.getBoundingClientRect().height || wrapper.offsetHeight;
+};
+
 const open = () => {
   if (isOpen) return Promise.resolve();
   isOpen = true;
-  setNavDrawerOpenState(true);
-
-  if (triggerText) triggerText.textContent = 'Esc';
 
   resetActiveTimeline();
   gsap.killTweensOf([wrapper, ...allLinks].filter(Boolean));
 
-  if (!wrapper) return Promise.resolve();
+  if (!wrapper) {
+    setNavDrawerOpenState(true);
+    if (triggerText) triggerText.textContent = 'Esc';
+    return Promise.resolve();
+  }
 
-  gsap.set(wrapper, { display: 'flex', overflow: 'hidden' });
+  const targetPadding = getDrawerPadding(true);
+  const targetHeight = measureOpenDrawerHeight(targetPadding);
+  gsap.set(wrapper, {
+    clearProps: DRAWER_MEASURE_CLEAR_PROPS,
+    display: 'flex',
+    height: 0,
+    opacity: 0,
+    overflow: 'hidden',
+    ...ZERO_DRAWER_PADDING,
+  });
   gsap.set(allLinks, { opacity: 0, y: 8 });
+
+  setNavDrawerOpenState(true);
+  if (triggerText) triggerText.textContent = 'Esc';
 
   return new Promise<void>((resolve) => {
     activeTl = gsap.timeline({
       defaults: { duration: getMotionDuration(), ease: NAV_MOTION_EASE },
       onComplete: () => {
-        gsap.set(wrapper, { height: 'auto', opacity: 1, clearProps: 'overflow' });
+        gsap.set(wrapper, {
+          height: 'auto',
+          opacity: 1,
+          clearProps: `overflow,${DRAWER_PADDING_CLEAR_PROPS}`,
+        });
         gsap.set(allLinks, { clearProps: 'opacity,y' });
         activeTl = null;
         resolve();
       },
     });
 
-    activeTl.to(wrapper, { height: 'auto', opacity: 1 }, 0);
+    activeTl.to(
+      wrapper,
+      { autoRound: false, height: targetHeight, opacity: 1, ...targetPadding },
+      0
+    );
     if (allLinks.length) activeTl.to(allLinks, { opacity: 1, y: 0 }, 0);
   });
 };
@@ -63,29 +128,42 @@ const close = (immediate = false) => {
 
   if (immediate) {
     setNavDrawerOpenState(false);
-    gsap.set(wrapper, { display: 'none', height: 0, opacity: 0, clearProps: 'overflow' });
+    gsap.set(wrapper, {
+      display: 'none',
+      height: 0,
+      opacity: 0,
+      overflow: 'hidden',
+      ...ZERO_DRAWER_PADDING,
+    });
     if (allLinks.length) gsap.set(allLinks, { clearProps: 'opacity,y' });
     return Promise.resolve();
   }
 
-  setNavDrawerOpenState(false);
-
   // Explicitly calculate current height so GSAP has a starting numeric value instead of "auto"
-  const currentHeight = wrapper ? wrapper.offsetHeight : 0;
-  if (wrapper) gsap.set(wrapper, { height: currentHeight, overflow: 'hidden' });
+  const targetPadding = getDrawerPadding();
+  const currentHeight = wrapper ? wrapper.getBoundingClientRect().height : 0;
+  if (wrapper) gsap.set(wrapper, { height: currentHeight, overflow: 'hidden', ...targetPadding });
+
+  setNavDrawerOpenState(false);
 
   return new Promise<void>((resolve) => {
     activeTl = gsap.timeline({
       defaults: { duration: getMotionDuration(), ease: NAV_MOTION_EASE },
       onComplete: () => {
-        gsap.set(wrapper, { display: 'none', height: 0, opacity: 0, clearProps: 'overflow' });
+        gsap.set(wrapper, {
+          display: 'none',
+          height: 0,
+          opacity: 0,
+          overflow: 'hidden',
+          ...ZERO_DRAWER_PADDING,
+        });
         if (allLinks.length) gsap.set(allLinks, { clearProps: 'opacity,y' });
         activeTl = null;
         resolve();
       },
     });
 
-    activeTl.to(wrapper, { height: 0, opacity: 0 }, 0);
+    activeTl.to(wrapper, { autoRound: false, height: 0, opacity: 0, ...ZERO_DRAWER_PADDING }, 0);
     if (allLinks.length) activeTl.to(allLinks, { opacity: 0, y: -8 }, 0);
   });
 };
@@ -120,6 +198,14 @@ export const initMobileNav = () => {
   wrapper = navRoot.querySelector<HTMLElement>('.nav-drawer');
 
   if (!triggerLink || !wrapper) return;
+
+  gsap.set(wrapper, {
+    display: 'none',
+    height: 0,
+    opacity: 0,
+    overflow: 'hidden',
+    ...ZERO_DRAWER_PADDING,
+  });
 
   allLinks = Array.from(
     wrapper.querySelectorAll<HTMLElement>('.nav-link, .nav-link-simple, .nav-mobile-link')

@@ -43380,32 +43380,89 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   var allLinks = [];
   var activeTl2 = null;
   var cleanupFns3 = [];
+  var DRAWER_PADDING_PROPS = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"];
+  var DRAWER_PADDING_CLEAR_PROPS = DRAWER_PADDING_PROPS.join(",");
+  var DRAWER_MEASURE_CLEAR_PROPS = "position,visibility,pointerEvents";
+  var ZERO_DRAWER_PADDING = {
+    paddingTop: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    paddingLeft: 0
+  };
   var getMotionDuration = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : NAV_MOTION_DURATION;
   var resetActiveTimeline = () => {
     activeTl2?.kill();
     activeTl2 = null;
   };
+  var getDrawerPadding = (useNaturalPadding = false) => {
+    if (!wrapper) return ZERO_DRAWER_PADDING;
+    if (useNaturalPadding) {
+      gsapWithCSS.set(wrapper, { clearProps: DRAWER_PADDING_CLEAR_PROPS });
+    }
+    const styles2 = window.getComputedStyle(wrapper);
+    return {
+      paddingTop: styles2.paddingTop,
+      paddingRight: styles2.paddingRight,
+      paddingBottom: styles2.paddingBottom,
+      paddingLeft: styles2.paddingLeft
+    };
+  };
+  var measureOpenDrawerHeight = (targetPadding) => {
+    if (!wrapper) return 0;
+    gsapWithCSS.set(wrapper, {
+      display: "flex",
+      height: "auto",
+      opacity: 1,
+      overflow: "hidden",
+      pointerEvents: "none",
+      position: "absolute",
+      visibility: "hidden",
+      ...targetPadding
+    });
+    return wrapper.getBoundingClientRect().height || wrapper.offsetHeight;
+  };
   var open = () => {
     if (isOpen) return Promise.resolve();
     isOpen = true;
-    setNavDrawerOpenState(true);
-    if (triggerText) triggerText.textContent = "Esc";
     resetActiveTimeline();
     gsapWithCSS.killTweensOf([wrapper, ...allLinks].filter(Boolean));
-    if (!wrapper) return Promise.resolve();
-    gsapWithCSS.set(wrapper, { display: "flex", overflow: "hidden" });
+    if (!wrapper) {
+      setNavDrawerOpenState(true);
+      if (triggerText) triggerText.textContent = "Esc";
+      return Promise.resolve();
+    }
+    const targetPadding = getDrawerPadding(true);
+    const targetHeight = measureOpenDrawerHeight(targetPadding);
+    gsapWithCSS.set(wrapper, {
+      clearProps: DRAWER_MEASURE_CLEAR_PROPS,
+      display: "flex",
+      height: 0,
+      opacity: 0,
+      overflow: "hidden",
+      ...ZERO_DRAWER_PADDING
+    });
     gsapWithCSS.set(allLinks, { opacity: 0, y: 8 });
+    setNavDrawerOpenState(true);
+    if (triggerText) triggerText.textContent = "Esc";
     return new Promise((resolve) => {
       activeTl2 = gsapWithCSS.timeline({
         defaults: { duration: getMotionDuration(), ease: NAV_MOTION_EASE },
         onComplete: () => {
-          gsapWithCSS.set(wrapper, { height: "auto", opacity: 1, clearProps: "overflow" });
+          gsapWithCSS.set(wrapper, {
+            height: "auto",
+            opacity: 1,
+            clearProps: `overflow,${DRAWER_PADDING_CLEAR_PROPS}`
+          });
           gsapWithCSS.set(allLinks, { clearProps: "opacity,y" });
           activeTl2 = null;
           resolve();
         }
       });
-      activeTl2.to(wrapper, { height: "auto", opacity: 1 }, 0);
+      activeTl2.to(
+        wrapper,
+        { autoRound: false, height: targetHeight, opacity: 1, ...targetPadding },
+        0
+      );
       if (allLinks.length) activeTl2.to(allLinks, { opacity: 1, y: 0 }, 0);
     });
   };
@@ -43419,24 +43476,37 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     if (!wrapper) return Promise.resolve();
     if (immediate) {
       setNavDrawerOpenState(false);
-      gsapWithCSS.set(wrapper, { display: "none", height: 0, opacity: 0, clearProps: "overflow" });
+      gsapWithCSS.set(wrapper, {
+        display: "none",
+        height: 0,
+        opacity: 0,
+        overflow: "hidden",
+        ...ZERO_DRAWER_PADDING
+      });
       if (allLinks.length) gsapWithCSS.set(allLinks, { clearProps: "opacity,y" });
       return Promise.resolve();
     }
+    const targetPadding = getDrawerPadding();
+    const currentHeight = wrapper ? wrapper.getBoundingClientRect().height : 0;
+    if (wrapper) gsapWithCSS.set(wrapper, { height: currentHeight, overflow: "hidden", ...targetPadding });
     setNavDrawerOpenState(false);
-    const currentHeight = wrapper ? wrapper.offsetHeight : 0;
-    if (wrapper) gsapWithCSS.set(wrapper, { height: currentHeight, overflow: "hidden" });
     return new Promise((resolve) => {
       activeTl2 = gsapWithCSS.timeline({
         defaults: { duration: getMotionDuration(), ease: NAV_MOTION_EASE },
         onComplete: () => {
-          gsapWithCSS.set(wrapper, { display: "none", height: 0, opacity: 0, clearProps: "overflow" });
+          gsapWithCSS.set(wrapper, {
+            display: "none",
+            height: 0,
+            opacity: 0,
+            overflow: "hidden",
+            ...ZERO_DRAWER_PADDING
+          });
           if (allLinks.length) gsapWithCSS.set(allLinks, { clearProps: "opacity,y" });
           activeTl2 = null;
           resolve();
         }
       });
-      activeTl2.to(wrapper, { height: 0, opacity: 0 }, 0);
+      activeTl2.to(wrapper, { autoRound: false, height: 0, opacity: 0, ...ZERO_DRAWER_PADDING }, 0);
       if (allLinks.length) activeTl2.to(allLinks, { opacity: 0, y: -8 }, 0);
     });
   };
@@ -43464,6 +43534,13 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     triggerText = triggerLink?.querySelector(".nav-trigger-text, .nav-link-text") ?? null;
     wrapper = navRoot.querySelector(".nav-drawer");
     if (!triggerLink || !wrapper) return;
+    gsapWithCSS.set(wrapper, {
+      display: "none",
+      height: 0,
+      opacity: 0,
+      overflow: "hidden",
+      ...ZERO_DRAWER_PADDING
+    });
     allLinks = Array.from(
       wrapper.querySelectorAll(".nav-link, .nav-link-simple, .nav-mobile-link")
     );
