@@ -1,82 +1,92 @@
 import gsap from 'gsap';
 
+import { NAV_MOTION_DURATION, NAV_MOTION_EASE, setNavDrawerOpenState } from './nav';
+
 let isOpen = false;
 let triggerLink: HTMLElement | null = null;
 let wrapper: HTMLElement | null = null;
-let container: HTMLElement | null = null;
 let triggerText: HTMLElement | null = null;
 let allLinks: HTMLElement[] = [];
+let activeTl: gsap.core.Timeline | null = null;
 let cleanupFns: Array<() => void> = [];
 
-const getClipOrigin = (): string => {
-  if (!triggerLink || !container) return '50% 0%';
-  const tr = triggerLink.getBoundingClientRect();
-  const cr = container.getBoundingClientRect();
-  const ox = tr.left + tr.width / 2 - cr.left;
-  const oy = tr.top + tr.height / 2 - cr.top;
-  return `${ox}px ${oy}px`;
+const getMotionDuration = () =>
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : NAV_MOTION_DURATION;
+
+const resetActiveTimeline = () => {
+  activeTl?.kill();
+  activeTl = null;
 };
 
 const open = () => {
+  if (isOpen) return Promise.resolve();
   isOpen = true;
+  setNavDrawerOpenState(true);
 
-  if (triggerText) triggerText.textContent = 'Close';
+  if (triggerText) triggerText.textContent = 'Esc';
 
-  gsap.set(wrapper, { display: 'block' });
-  container?.classList.remove('invisible');
+  resetActiveTimeline();
+  gsap.killTweensOf([wrapper, ...allLinks].filter(Boolean));
 
-  const origin = getClipOrigin();
-  gsap.killTweensOf([container, ...allLinks].filter(Boolean));
+  if (!wrapper) return Promise.resolve();
 
-  gsap.fromTo(
-    container,
-    { clipPath: `circle(0px at ${origin})` },
-    { clipPath: `circle(200vmax at ${origin})`, duration: 0.55, ease: 'power3.inOut' }
-  );
+  gsap.set(wrapper, { display: 'flex', overflow: 'hidden' });
+  gsap.set(allLinks, { opacity: 0, y: 8 });
 
-  if (allLinks.length) {
-    gsap.fromTo(
-      allLinks,
-      { opacity: 0, y: 10 },
-      { opacity: 1, y: 0, duration: 0.3, ease: 'power2.out', stagger: 0.06, delay: 0.25 }
-    );
-  }
+  return new Promise<void>((resolve) => {
+    activeTl = gsap.timeline({
+      defaults: { duration: getMotionDuration(), ease: NAV_MOTION_EASE },
+      onComplete: () => {
+        gsap.set(wrapper, { height: 'auto', opacity: 1, clearProps: 'overflow' });
+        gsap.set(allLinks, { clearProps: 'opacity,y' });
+        activeTl = null;
+        resolve();
+      },
+    });
+
+    activeTl.to(wrapper, { height: 'auto', opacity: 1 }, 0);
+    if (allLinks.length) activeTl.to(allLinks, { opacity: 1, y: 0 }, 0);
+  });
 };
 
 const close = (immediate = false) => {
-  if (!isOpen && !immediate) return;
+  if (!isOpen && !immediate) return Promise.resolve();
   isOpen = false;
 
   if (triggerText) triggerText.textContent = 'Menu';
 
-  const targets = [container, ...allLinks].filter(Boolean) as HTMLElement[];
+  const targets = [wrapper, ...allLinks].filter(Boolean) as HTMLElement[];
+  resetActiveTimeline();
   gsap.killTweensOf(targets);
 
+  if (!wrapper) return Promise.resolve();
+
   if (immediate) {
-    if (container) gsap.set(container, { clipPath: '' });
-    if (wrapper) gsap.set(wrapper, { display: 'none' });
-    container?.classList.add('invisible');
+    setNavDrawerOpenState(false);
+    gsap.set(wrapper, { display: 'none', height: 0, opacity: 0, clearProps: 'overflow' });
     if (allLinks.length) gsap.set(allLinks, { clearProps: 'opacity,y' });
-    return;
+    return Promise.resolve();
   }
 
-  const origin = getClipOrigin();
+  setNavDrawerOpenState(false);
 
-  if (allLinks.length) {
-    gsap.to(allLinks, { opacity: 0, y: -6, duration: 0.15, ease: 'power2.in', stagger: 0.03 });
-  }
+  // Explicitly calculate current height so GSAP has a starting numeric value instead of "auto"
+  const currentHeight = wrapper ? wrapper.offsetHeight : 0;
+  if (wrapper) gsap.set(wrapper, { height: currentHeight, overflow: 'hidden' });
 
-  gsap.to(container, {
-    clipPath: `circle(0px at ${origin})`,
-    duration: 0.45,
-    ease: 'power3.inOut',
-    delay: 0.05,
-    onComplete: () => {
-      gsap.set(container, { clipPath: '' });
-      gsap.set(wrapper, { display: 'none' });
-      container?.classList.add('invisible');
-      if (allLinks.length) gsap.set(allLinks, { clearProps: 'opacity,y' });
-    },
+  return new Promise<void>((resolve) => {
+    activeTl = gsap.timeline({
+      defaults: { duration: getMotionDuration(), ease: NAV_MOTION_EASE },
+      onComplete: () => {
+        gsap.set(wrapper, { display: 'none', height: 0, opacity: 0, clearProps: 'overflow' });
+        if (allLinks.length) gsap.set(allLinks, { clearProps: 'opacity,y' });
+        activeTl = null;
+        resolve();
+      },
+    });
+
+    activeTl.to(wrapper, { height: 0, opacity: 0 }, 0);
+    if (allLinks.length) activeTl.to(allLinks, { opacity: 0, y: -8 }, 0);
   });
 };
 
@@ -96,27 +106,35 @@ const handleOutsideClick = (e: Event) => {
   if (!target.closest('.nav-unified')) close();
 };
 
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') close();
+};
+
 export const initMobileNav = () => {
   const navRoot = document.querySelector<HTMLElement>('.nav-unified');
   if (!navRoot) return;
 
-  triggerLink = navRoot.querySelector<HTMLElement>('[nav-trigger="open-nav"], .nav-mobile-trigger');
-  triggerText = triggerLink?.querySelector<HTMLElement>('.nav-link-text') ?? null;
-  wrapper = navRoot.querySelector<HTMLElement>('.nav-wrapper-mobile');
-  container = navRoot.querySelector<HTMLElement>('.nav-container-mobile');
+  triggerLink = navRoot.querySelector<HTMLElement>('[nav-trigger="open-nav"], .nav-trigger');
+  triggerText =
+    triggerLink?.querySelector<HTMLElement>('.nav-trigger-text, .nav-link-text') ?? null;
+  wrapper = navRoot.querySelector<HTMLElement>('.nav-drawer');
 
-  if (!triggerLink || !wrapper || !container) return;
+  if (!triggerLink || !wrapper) return;
 
-  allLinks = Array.from(container.querySelectorAll<HTMLElement>('.nav-mobile-link'));
+  allLinks = Array.from(
+    wrapper.querySelectorAll<HTMLElement>('.nav-link, .nav-link-simple, .nav-mobile-link')
+  );
 
   triggerLink.addEventListener('click', handleTriggerClick);
   document.addEventListener('click', handleOutsideClick);
   document.addEventListener('touchend', handleOutsideClick, { passive: true });
+  document.addEventListener('keydown', handleKeydown);
 
   cleanupFns = [
     () => triggerLink?.removeEventListener('click', handleTriggerClick),
     () => document.removeEventListener('click', handleOutsideClick),
     () => document.removeEventListener('touchend', handleOutsideClick),
+    () => document.removeEventListener('keydown', handleKeydown),
   ];
 };
 
@@ -124,9 +142,9 @@ export const destroyMobileNav = () => {
   close(true);
   cleanupFns.forEach((fn) => fn());
   cleanupFns = [];
+  activeTl = null;
   triggerLink = null;
   wrapper = null;
-  container = null;
   triggerText = null;
   allLinks = [];
 };

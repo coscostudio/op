@@ -15,20 +15,24 @@ const LOGO_HITBOX_CLASS = 'op-logo-hitbox';
 
 const TEXT_PRIMARY = 'var(--text-color--text-primary)';
 const TEXT_SECONDARY = 'var(--text-color--text-secondary)';
-const DARK_ACCENT = 'var(--base-color-brand--nav-bg)';
+const LIGHT_ACCENT = 'var(--base-color-brand--light-accent)';
+const BACKGROUND_PRIMARY = 'var(--base-color-brand--nav-bg-light)';
+const BACKGROUND_SECONDARY = 'var(--base-color-brand--nav-bg-dark)';
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 const TOP_SCROLL_THRESHOLD = 4;
 const CASE_TRIGGER_OFFSET = 4;
-const NAV_BG_IN_DUR = 0.52;
-const NAV_BG_OUT_DUR = 0.92;
-const NAV_COLOR_DUR = 0.36;
-const LETTER_MASK_DUR = 0.26;
-const LETTER_STAGGER = 0.032;
+export const NAV_MOTION_DURATION = 0.52;
+export const NAV_MOTION_EASE = 'power3.inOut';
+const NAV_COLOR_DUR = NAV_MOTION_DURATION;
+const LETTER_MASK_DUR = 0.38;
+const LETTER_STAGGER = 0.008;
 const OUTSIDE_WIPE_T = 0.04;
 const PERSPECTIVE_WIPE_T = 0;
-const OUTSIDE_WIPE_DUR = LETTER_MASK_DUR + 5 * LETTER_STAGGER;
-const PAREN_MOVE_DUR = OUTSIDE_WIPE_DUR + 0.12;
-const PAREN_EXPAND_DUR = OUTSIDE_WIPE_DUR;
+const PAREN_MOVE_DUR = NAV_MOTION_DURATION;
+const PAREN_EXPAND_DUR = NAV_MOTION_DURATION;
+const NAV_CLOCK_SELECTOR = '[nav-element="clock"]';
+const NEW_YORK_TIME_ZONE = 'America/New_York';
+const NEW_YORK_CLOCK_PREFIX = 'NY, NY';
 
 type NavNamespace = 'about' | 'cases' | 'home' | 'work' | string;
 type LogoMode = 'condensed' | 'full';
@@ -61,9 +65,12 @@ let activeLogoTl: gsap.core.Timeline | null = null;
 let currentLogoMode: LogoMode | null = null;
 let activeNamespace: NavNamespace | null = null;
 let activeContainer: HTMLElement | null = null;
+let isDrawerOpen = false;
 let currentNavBackgroundKey = '';
 let currentNavTextKey = '';
 let rafId = 0;
+let navClockTimer: number | null = null;
+let newYorkTimeFormatter: Intl.DateTimeFormat | null = null;
 let cleanupFns: Array<() => void> = [];
 
 const getNav = () => document.querySelector<HTMLElement>('.nav-unified');
@@ -72,10 +79,68 @@ const getColorTargets = (nav: HTMLElement): Element[] => [
   nav,
   ...Array.from(
     nav.querySelectorAll(
-      '.logo-container, .logo-1, .logo-1 svg, .logo-1 svg g, .logo-1 svg path, .nav, .nav-link, .nav-link-text, .nav-mobile-trigger, .nav-mobile-link'
+      '.logo-container, .logo-1, .logo-1 svg, .logo-1 svg g, .logo-1 svg path, .nav, .nav-link, .nav-link-simple, .nav-trigger, .nav-trigger-text, .nav-link-text, .nav-mobile-trigger, .nav-mobile-link, [nav-element="clock"]'
     )
   ),
 ];
+
+const getNewYorkTimeFormatter = () => {
+  newYorkTimeFormatter ??= new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    hourCycle: 'h23',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZone: NEW_YORK_TIME_ZONE,
+  });
+
+  return newYorkTimeFormatter;
+};
+
+const getNewYorkClockLabel = (date = new Date()) => {
+  const parts = getNewYorkTimeFormatter().formatToParts(date);
+  const time = parts.reduce(
+    (acc, part) => {
+      if (part.type === 'hour' || part.type === 'minute' || part.type === 'second') {
+        acc[part.type] = part.value;
+      }
+      return acc;
+    },
+    { hour: '00', minute: '00', second: '00' }
+  );
+
+  const hour = time.hour === '24' ? '00' : time.hour;
+  return `${NEW_YORK_CLOCK_PREFIX}, ${hour}:${time.minute}:${time.second}`;
+};
+
+const updateNavClock = () => {
+  document.querySelectorAll<HTMLElement>(NAV_CLOCK_SELECTOR).forEach((clock) => {
+    clock.textContent = getNewYorkClockLabel();
+  });
+};
+
+const scheduleNavClockTick = () => {
+  if (navClockTimer !== null) {
+    window.clearTimeout(navClockTimer);
+  }
+
+  const msUntilNextSecond = 1000 - (Date.now() % 1000);
+  navClockTimer = window.setTimeout(() => {
+    updateNavClock();
+    scheduleNavClockTick();
+  }, msUntilNextSecond);
+};
+
+export const initNavClock = () => {
+  if (!document.querySelector(NAV_CLOCK_SELECTOR)) return;
+  updateNavClock();
+  scheduleNavClockTick();
+};
+
+export const destroyNavClock = () => {
+  if (navClockTimer === null) return;
+  window.clearTimeout(navClockTimer);
+  navClockTimer = null;
+};
 
 const resolveCssColor = (color: string) => {
   const match = color.match(/^var\((--[^),\s]+)\)$/);
@@ -85,12 +150,34 @@ const resolveCssColor = (color: string) => {
   return resolved || color;
 };
 
-const getNamespaceTextColor = (namespace: NavNamespace | null | undefined) => {
+const getRenderedCssColor = (color: string) => {
+  const probe = document.createElement('span');
+  probe.style.color = color;
+  document.documentElement.appendChild(probe);
+  const rendered = getComputedStyle(probe).color;
+  probe.remove();
+  return rendered || color;
+};
+
+const getTransparentCssColor = (color: string) => {
+  const channels = getRenderedCssColor(color)
+    .match(/[\d.]+/g)
+    ?.slice(0, 3);
+
+  if (!channels || channels.length < 3) return TRANSPARENT;
+  return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, 0)`;
+};
+
+const getNamespaceTextColor = (namespace: NavNamespace | null | undefined, isActiveBg = false) => {
+  if (isActiveBg && namespace === 'about') return LIGHT_ACCENT;
   if (namespace === 'about' || namespace === 'cases') return TEXT_SECONDARY;
   return TEXT_PRIMARY;
 };
 
-const getCondensedBackground = () => DARK_ACCENT;
+const getNamespaceBackground = (namespace: NavNamespace | null | undefined) => {
+  if (namespace === 'about') return BACKGROUND_SECONDARY;
+  return BACKGROUND_PRIMARY;
+};
 
 const remToPx = (rem: number) =>
   rem * (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
@@ -305,7 +392,7 @@ const animateLetters = (
       {
         attr: { width: visible ? letter.width : 0, x: letter.x },
         duration: LETTER_MASK_DUR,
-        ease: visible ? 'power3.out' : 'power3.inOut',
+        ease: NAV_MOTION_EASE,
       },
       position + index * LETTER_STAGGER
     );
@@ -373,24 +460,35 @@ const setLogoMode = (mode: LogoMode, immediate = false) => {
     animateLetters(tl, logo.outsideLetters, false, OUTSIDE_WIPE_T);
     tl.to(
       motionState,
-      { duration: PAREN_MOVE_DUR, ease: 'power2.inOut', parenX: ICON_PAREN_TX },
-      OUTSIDE_WIPE_T
+      { duration: PAREN_MOVE_DUR, ease: NAV_MOTION_EASE, parenX: ICON_PAREN_TX },
+      0
     );
   } else {
     animateLetters(tl, logo.outsideLetters, true, OUTSIDE_WIPE_T);
     animateLetters(tl, logo.perspectiveLetters, true, OUTSIDE_WIPE_T + 0.06);
-    tl.to(
-      motionState,
-      { duration: PAREN_EXPAND_DUR, ease: 'power3.out', parenX: 0 },
-      OUTSIDE_WIPE_T
-    );
+    tl.to(motionState, { duration: PAREN_EXPAND_DUR, ease: NAV_MOTION_EASE, parenX: 0 }, 0);
   }
 };
 
-const applyNavVisualState = (condensed: boolean, immediate = false) => {
+export const setNavDrawerOpenState = (open: boolean) => {
+  if (isDrawerOpen === open) return;
+  isDrawerOpen = open;
+  applyNavVisualState(shouldCondense());
+};
+
+const applyNavVisualState = (condensed: boolean, immediate = false, skipVisibility = false) => {
   if (activeNamespace === 'home') condensed = false;
-  const backgroundColor = condensed ? resolveCssColor(getCondensedBackground()) : TRANSPARENT;
-  const backgroundKey = [condensed, backgroundColor].join('|');
+  if (isDrawerOpen) condensed = false; // drawer forces full logo
+
+  const isActiveBg = condensed || isDrawerOpen;
+
+  applyNavTextState(isActiveBg, immediate, skipVisibility);
+
+  const activeBackgroundColor = resolveCssColor(getNamespaceBackground(activeNamespace));
+  const backgroundColor = isActiveBg
+    ? activeBackgroundColor
+    : getTransparentCssColor(activeBackgroundColor);
+  const backgroundKey = [condensed, isDrawerOpen, backgroundColor].join('|');
 
   if (!immediate && backgroundKey === currentNavBackgroundKey) return;
 
@@ -399,20 +497,19 @@ const applyNavVisualState = (condensed: boolean, immediate = false) => {
 
   currentNavBackgroundKey = backgroundKey;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const backgroundDuration =
-    immediate || reducedMotion ? 0 : condensed ? NAV_BG_IN_DUR : NAV_BG_OUT_DUR;
+  const backgroundDuration = immediate || reducedMotion ? 0 : NAV_MOTION_DURATION;
 
   setLogoMode(condensed ? 'condensed' : 'full', immediate);
   gsap.killTweensOf(nav, 'backgroundColor');
   gsap.to(nav, {
     backgroundColor,
     duration: backgroundDuration,
-    ease: condensed ? 'power3.out' : 'power2.inOut',
-    overwrite: false,
+    ease: NAV_MOTION_EASE,
+    overwrite: 'auto',
   });
 };
 
-const applyNavTextState = (immediate = false, skipVisibility = false) => {
+const applyNavTextState = (isActiveBg = false, immediate = false, skipVisibility = false) => {
   const nav = getNav();
   if (!nav) return;
 
@@ -421,8 +518,8 @@ const applyNavTextState = (immediate = false, skipVisibility = false) => {
   }
   ensureLogoUsesCurrentColor(nav);
 
-  const textColor = resolveCssColor(getNamespaceTextColor(activeNamespace));
-  const textKey = [activeNamespace, textColor].join('|');
+  const textColor = resolveCssColor(getNamespaceTextColor(activeNamespace, isActiveBg));
+  const textKey = [activeNamespace, isActiveBg, textColor].join('|');
   if (!immediate && textKey === currentNavTextKey) return;
 
   currentNavTextKey = textKey;
@@ -434,8 +531,8 @@ const applyNavTextState = (immediate = false, skipVisibility = false) => {
   gsap.to(targets, {
     color: textColor,
     duration,
-    ease: 'power2.inOut',
-    overwrite: false,
+    ease: NAV_MOTION_EASE,
+    overwrite: 'auto',
   });
 };
 
@@ -515,8 +612,8 @@ export const updateNavPageState = (
   activeNamespace = nextNamespace;
   activeContainer = container;
   installScrollListeners();
-  applyNavTextState(immediate, skipVisibility);
-  applyNavVisualState(shouldCondense(), immediate);
+
+  applyNavVisualState(shouldCondense(), immediate, skipVisibility);
 };
 
 /**

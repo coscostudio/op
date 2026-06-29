@@ -1,7 +1,7 @@
 import gsap from 'gsap';
 
 import { waitForIntro } from './introSequence';
-import { updateNavPageState } from './nav';
+import { NAV_MOTION_DURATION, NAV_MOTION_EASE, updateNavPageState } from './nav';
 
 /**
  * Inject a CSS rule at module load time so every barba container is hidden the instant
@@ -69,12 +69,12 @@ export const fadeTransition = {
     const nav = document.querySelector<HTMLElement>('.nav-unified');
     if (nav) gsap.set(nav, { opacity: 0 }); // ensure it starts hidden just in case
     gsap.set(data.next.container, { opacity: 0 });
-    
+
     await waitForIntro();
-    
+
     const targets = [data.next.container];
     if (nav) targets.push(nav);
-    
+
     await gsap.to(targets, {
       opacity: 1,
       duration: 0.4,
@@ -86,8 +86,8 @@ export const fadeTransition = {
   async leave(data: { current: { container: HTMLElement } }) {
     await gsap.to(data.current.container, {
       opacity: 0,
-      duration: 0.35,
-      ease: 'power1.in',
+      duration: NAV_MOTION_DURATION,
+      ease: NAV_MOTION_EASE,
     });
   },
 

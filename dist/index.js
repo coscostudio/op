@@ -19170,7 +19170,7 @@ ${newDetails.m3u8}`);
       const tracks = {};
       const _initPTS = this._initPTS;
       let computePTSDTS = !_initPTS || accurateTimeOffset;
-      let container3 = "audio/mp4";
+      let container2 = "audio/mp4";
       let initPTS;
       let initDTS;
       let timescale;
@@ -19183,7 +19183,7 @@ ${newDetails.m3u8}`);
         switch (audioTrack.segmentCodec) {
           case "mp3":
             if (typeSupported.mpeg) {
-              container3 = "audio/mpeg";
+              container2 = "audio/mpeg";
               audioTrack.codec = "";
             } else if (typeSupported.mp3) {
               audioTrack.codec = "mp3";
@@ -19195,7 +19195,7 @@ ${newDetails.m3u8}`);
         }
         tracks.audio = {
           id: "audio",
-          container: container3,
+          container: container2,
           codec: audioTrack.codec,
           initSegment: audioTrack.segmentCodec === "mp3" && typeSupported.mpeg ? new Uint8Array(0) : MP4.initSegment([audioTrack]),
           metadata: {
@@ -22598,7 +22598,7 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
           id,
           codec,
           levelCodec,
-          container: container3,
+          container: container2,
           metadata,
           supplemental
         } = parsedTrack;
@@ -22613,7 +22613,7 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
             listeners: [],
             codec,
             supplemental,
-            container: container3,
+            container: container2,
             levelCodec,
             metadata,
             id
@@ -22631,8 +22631,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
           if (trackCodec !== (track.pendingCodec || track.codec)) {
             track.pendingCodec = trackCodec;
           }
-          track.container = container3;
-          this.appendChangeType(trackName, container3, trackCodec);
+          track.container = container2;
+          this.appendChangeType(trackName, container2, trackCodec);
         }
       });
       if (this.tracksReady || this.sourceBufferCount) {
@@ -22661,8 +22661,8 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
         return baseTracks;
       }, {});
     }
-    appendChangeType(type, container3, codec) {
-      const mimeType = `${container3};codecs=${codec}`;
+    appendChangeType(type, container2, codec) {
+      const mimeType = `${container2};codecs=${codec}`;
       const operation = {
         label: `change-type=${mimeType}`,
         execute: () => {
@@ -22673,7 +22673,7 @@ transfer tracks: ${stringify(transferredTracks, (key, value) => key === "initSeg
               this.log(`changing ${type} sourceBuffer type to ${mimeType}`);
               sb.changeType(mimeType);
               track.codec = codec;
-              track.container = container3;
+              track.container = container2;
             }
           }
           this.shiftAndExecuteNext(type);
@@ -39488,50 +39488,118 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   var LOGO_HITBOX_CLASS = "op-logo-hitbox";
   var TEXT_PRIMARY = "var(--text-color--text-primary)";
   var TEXT_SECONDARY = "var(--text-color--text-secondary)";
-  var DARK_ACCENT = "var(--base-color-brand--nav-bg)";
+  var LIGHT_ACCENT = "var(--base-color-brand--light-accent)";
+  var BACKGROUND_PRIMARY = "var(--base-color-brand--nav-bg-light)";
+  var BACKGROUND_SECONDARY = "var(--base-color-brand--nav-bg-dark)";
   var TRANSPARENT = "rgba(0, 0, 0, 0)";
   var TOP_SCROLL_THRESHOLD = 4;
   var CASE_TRIGGER_OFFSET = 4;
-  var NAV_BG_IN_DUR = 0.52;
-  var NAV_BG_OUT_DUR = 0.92;
-  var NAV_COLOR_DUR = 0.36;
-  var LETTER_MASK_DUR = 0.26;
-  var LETTER_STAGGER = 0.032;
+  var NAV_MOTION_DURATION = 0.52;
+  var NAV_MOTION_EASE = "power3.inOut";
+  var NAV_COLOR_DUR = NAV_MOTION_DURATION;
+  var LETTER_MASK_DUR = 0.38;
+  var LETTER_STAGGER = 8e-3;
   var OUTSIDE_WIPE_T = 0.04;
   var PERSPECTIVE_WIPE_T = 0;
-  var OUTSIDE_WIPE_DUR = LETTER_MASK_DUR + 5 * LETTER_STAGGER;
-  var PAREN_MOVE_DUR = OUTSIDE_WIPE_DUR + 0.12;
-  var PAREN_EXPAND_DUR = OUTSIDE_WIPE_DUR;
+  var PAREN_MOVE_DUR = NAV_MOTION_DURATION;
+  var PAREN_EXPAND_DUR = NAV_MOTION_DURATION;
+  var NAV_CLOCK_SELECTOR = '[nav-element="clock"]';
+  var NEW_YORK_TIME_ZONE = "America/New_York";
+  var NEW_YORK_CLOCK_PREFIX = "NY, NY";
   var logoUid = 0;
   var preparedLogo = null;
   var activeLogoTl = null;
   var currentLogoMode = null;
   var activeNamespace = null;
   var activeContainer = null;
+  var isDrawerOpen = false;
   var currentNavBackgroundKey = "";
   var currentNavTextKey = "";
   var rafId = 0;
+  var navClockTimer = null;
+  var newYorkTimeFormatter = null;
   var cleanupFns = [];
   var getNav = () => document.querySelector(".nav-unified");
   var getColorTargets = (nav) => [
     nav,
     ...Array.from(
       nav.querySelectorAll(
-        ".logo-container, .logo-1, .logo-1 svg, .logo-1 svg g, .logo-1 svg path, .nav, .nav-link, .nav-link-text, .nav-mobile-trigger, .nav-mobile-link"
+        '.logo-container, .logo-1, .logo-1 svg, .logo-1 svg g, .logo-1 svg path, .nav, .nav-link, .nav-link-simple, .nav-trigger, .nav-trigger-text, .nav-link-text, .nav-mobile-trigger, .nav-mobile-link, [nav-element="clock"]'
       )
     )
   ];
+  var getNewYorkTimeFormatter = () => {
+    newYorkTimeFormatter ??= new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      hourCycle: "h23",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: NEW_YORK_TIME_ZONE
+    });
+    return newYorkTimeFormatter;
+  };
+  var getNewYorkClockLabel = (date = /* @__PURE__ */ new Date()) => {
+    const parts = getNewYorkTimeFormatter().formatToParts(date);
+    const time = parts.reduce(
+      (acc, part) => {
+        if (part.type === "hour" || part.type === "minute" || part.type === "second") {
+          acc[part.type] = part.value;
+        }
+        return acc;
+      },
+      { hour: "00", minute: "00", second: "00" }
+    );
+    const hour = time.hour === "24" ? "00" : time.hour;
+    return `${NEW_YORK_CLOCK_PREFIX}, ${hour}:${time.minute}:${time.second}`;
+  };
+  var updateNavClock = () => {
+    document.querySelectorAll(NAV_CLOCK_SELECTOR).forEach((clock) => {
+      clock.textContent = getNewYorkClockLabel();
+    });
+  };
+  var scheduleNavClockTick = () => {
+    if (navClockTimer !== null) {
+      window.clearTimeout(navClockTimer);
+    }
+    const msUntilNextSecond = 1e3 - Date.now() % 1e3;
+    navClockTimer = window.setTimeout(() => {
+      updateNavClock();
+      scheduleNavClockTick();
+    }, msUntilNextSecond);
+  };
+  var initNavClock = () => {
+    if (!document.querySelector(NAV_CLOCK_SELECTOR)) return;
+    updateNavClock();
+    scheduleNavClockTick();
+  };
   var resolveCssColor = (color) => {
     const match = color.match(/^var\((--[^),\s]+)\)$/);
     if (!match) return color;
     const resolved = getComputedStyle(document.documentElement).getPropertyValue(match[1]).trim();
     return resolved || color;
   };
-  var getNamespaceTextColor = (namespace) => {
+  var getRenderedCssColor = (color) => {
+    const probe2 = document.createElement("span");
+    probe2.style.color = color;
+    document.documentElement.appendChild(probe2);
+    const rendered = getComputedStyle(probe2).color;
+    probe2.remove();
+    return rendered || color;
+  };
+  var getTransparentCssColor = (color) => {
+    const channels = getRenderedCssColor(color).match(/[\d.]+/g)?.slice(0, 3);
+    if (!channels || channels.length < 3) return TRANSPARENT;
+    return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, 0)`;
+  };
+  var getNamespaceTextColor = (namespace, isActiveBg = false) => {
+    if (isActiveBg && namespace === "about") return LIGHT_ACCENT;
     if (namespace === "about" || namespace === "cases") return TEXT_SECONDARY;
     return TEXT_PRIMARY;
   };
-  var getCondensedBackground = () => DARK_ACCENT;
+  var getNamespaceBackground = (namespace) => {
+    if (namespace === "about") return BACKGROUND_SECONDARY;
+    return BACKGROUND_PRIMARY;
+  };
   var remToPx = (rem) => rem * (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
   var ensureLogoUsesCurrentColor = (nav) => {
     nav.querySelectorAll(".logo-1 svg path").forEach((path) => {
@@ -39694,7 +39762,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
         {
           attr: { width: visible ? letter.width : 0, x: letter.x },
           duration: LETTER_MASK_DUR,
-          ease: visible ? "power3.out" : "power3.inOut"
+          ease: NAV_MOTION_EASE
         },
         position + index * LETTER_STAGGER
       );
@@ -39755,47 +39823,52 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       animateLetters(tl, logo.outsideLetters, false, OUTSIDE_WIPE_T);
       tl.to(
         motionState,
-        { duration: PAREN_MOVE_DUR, ease: "power2.inOut", parenX: ICON_PAREN_TX },
-        OUTSIDE_WIPE_T
+        { duration: PAREN_MOVE_DUR, ease: NAV_MOTION_EASE, parenX: ICON_PAREN_TX },
+        0
       );
     } else {
       animateLetters(tl, logo.outsideLetters, true, OUTSIDE_WIPE_T);
       animateLetters(tl, logo.perspectiveLetters, true, OUTSIDE_WIPE_T + 0.06);
-      tl.to(
-        motionState,
-        { duration: PAREN_EXPAND_DUR, ease: "power3.out", parenX: 0 },
-        OUTSIDE_WIPE_T
-      );
+      tl.to(motionState, { duration: PAREN_EXPAND_DUR, ease: NAV_MOTION_EASE, parenX: 0 }, 0);
     }
   };
-  var applyNavVisualState = (condensed, immediate = false) => {
+  var setNavDrawerOpenState = (open2) => {
+    if (isDrawerOpen === open2) return;
+    isDrawerOpen = open2;
+    applyNavVisualState(shouldCondense());
+  };
+  var applyNavVisualState = (condensed, immediate = false, skipVisibility = false) => {
     if (activeNamespace === "home") condensed = false;
-    const backgroundColor = condensed ? resolveCssColor(getCondensedBackground()) : TRANSPARENT;
-    const backgroundKey = [condensed, backgroundColor].join("|");
+    if (isDrawerOpen) condensed = false;
+    const isActiveBg = condensed || isDrawerOpen;
+    applyNavTextState(isActiveBg, immediate, skipVisibility);
+    const activeBackgroundColor = resolveCssColor(getNamespaceBackground(activeNamespace));
+    const backgroundColor = isActiveBg ? activeBackgroundColor : getTransparentCssColor(activeBackgroundColor);
+    const backgroundKey = [condensed, isDrawerOpen, backgroundColor].join("|");
     if (!immediate && backgroundKey === currentNavBackgroundKey) return;
     const nav = getNav();
     if (!nav) return;
     currentNavBackgroundKey = backgroundKey;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const backgroundDuration = immediate || reducedMotion ? 0 : condensed ? NAV_BG_IN_DUR : NAV_BG_OUT_DUR;
+    const backgroundDuration = immediate || reducedMotion ? 0 : NAV_MOTION_DURATION;
     setLogoMode(condensed ? "condensed" : "full", immediate);
     gsapWithCSS.killTweensOf(nav, "backgroundColor");
     gsapWithCSS.to(nav, {
       backgroundColor,
       duration: backgroundDuration,
-      ease: condensed ? "power3.out" : "power2.inOut",
-      overwrite: false
+      ease: NAV_MOTION_EASE,
+      overwrite: "auto"
     });
   };
-  var applyNavTextState = (immediate = false, skipVisibility = false) => {
+  var applyNavTextState = (isActiveBg = false, immediate = false, skipVisibility = false) => {
     const nav = getNav();
     if (!nav) return;
     if (!skipVisibility) {
       ensureNavVisible(nav);
     }
     ensureLogoUsesCurrentColor(nav);
-    const textColor = resolveCssColor(getNamespaceTextColor(activeNamespace));
-    const textKey = [activeNamespace, textColor].join("|");
+    const textColor = resolveCssColor(getNamespaceTextColor(activeNamespace, isActiveBg));
+    const textKey = [activeNamespace, isActiveBg, textColor].join("|");
     if (!immediate && textKey === currentNavTextKey) return;
     currentNavTextKey = textKey;
     const duration = immediate || window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : NAV_COLOR_DUR;
@@ -39804,8 +39877,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     gsapWithCSS.to(targets, {
       color: textColor,
       duration,
-      ease: "power2.inOut",
-      overwrite: false
+      ease: NAV_MOTION_EASE,
+      overwrite: "auto"
     });
   };
   var shouldCondense = () => {
@@ -39859,14 +39932,13 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       () => window.removeEventListener("resize", requestScrollUpdate)
     ];
   };
-  var updateNavPageState = (namespace = getCurrentNamespace(), container3 = document.querySelector('[data-barba="container"]'), immediate = false, skipVisibility = false) => {
+  var updateNavPageState = (namespace = getCurrentNamespace(), container2 = document.querySelector('[data-barba="container"]'), immediate = false, skipVisibility = false) => {
     const nextNamespace = namespace ?? null;
     if (activeNamespace !== nextNamespace) currentNavTextKey = "";
     activeNamespace = nextNamespace;
-    activeContainer = container3;
+    activeContainer = container2;
     installScrollListeners();
-    applyNavTextState(immediate, skipVisibility);
-    applyNavVisualState(shouldCondense(), immediate);
+    applyNavVisualState(shouldCondense(), immediate, skipVisibility);
   };
   var updateNavCurrentState = () => {
     const currentPath = window.location.pathname;
@@ -39914,8 +39986,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       }
     }
   };
-  var resetInnerMainWrapper = (container3) => {
-    const inner = container3.querySelector(".main-wrapper");
+  var resetInnerMainWrapper = (container2) => {
+    const inner = container2.querySelector(".main-wrapper");
     if (inner) gsapWithCSS.set(inner, { opacity: 1 });
   };
   var fadeTransition = {
@@ -39941,8 +40013,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     async leave(data) {
       await gsapWithCSS.to(data.current.container, {
         opacity: 0,
-        duration: 0.35,
-        ease: "power1.in"
+        duration: NAV_MOTION_DURATION,
+        ease: NAV_MOTION_EASE
       });
     },
     // ── Prepare incoming page ─────────────────────────────────────────────────────
@@ -43304,66 +43376,68 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   var isOpen = false;
   var triggerLink = null;
   var wrapper = null;
-  var container2 = null;
   var triggerText = null;
   var allLinks = [];
+  var activeTl2 = null;
   var cleanupFns3 = [];
-  var getClipOrigin = () => {
-    if (!triggerLink || !container2) return "50% 0%";
-    const tr = triggerLink.getBoundingClientRect();
-    const cr = container2.getBoundingClientRect();
-    const ox = tr.left + tr.width / 2 - cr.left;
-    const oy = tr.top + tr.height / 2 - cr.top;
-    return `${ox}px ${oy}px`;
+  var getMotionDuration = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : NAV_MOTION_DURATION;
+  var resetActiveTimeline = () => {
+    activeTl2?.kill();
+    activeTl2 = null;
   };
   var open = () => {
+    if (isOpen) return Promise.resolve();
     isOpen = true;
-    if (triggerText) triggerText.textContent = "Close";
-    gsapWithCSS.set(wrapper, { display: "block" });
-    container2?.classList.remove("invisible");
-    const origin = getClipOrigin();
-    gsapWithCSS.killTweensOf([container2, ...allLinks].filter(Boolean));
-    gsapWithCSS.fromTo(
-      container2,
-      { clipPath: `circle(0px at ${origin})` },
-      { clipPath: `circle(200vmax at ${origin})`, duration: 0.55, ease: "power3.inOut" }
-    );
-    if (allLinks.length) {
-      gsapWithCSS.fromTo(
-        allLinks,
-        { opacity: 0, y: 10 },
-        { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", stagger: 0.06, delay: 0.25 }
-      );
-    }
+    setNavDrawerOpenState(true);
+    if (triggerText) triggerText.textContent = "Esc";
+    resetActiveTimeline();
+    gsapWithCSS.killTweensOf([wrapper, ...allLinks].filter(Boolean));
+    if (!wrapper) return Promise.resolve();
+    gsapWithCSS.set(wrapper, { display: "flex", overflow: "hidden" });
+    gsapWithCSS.set(allLinks, { opacity: 0, y: 8 });
+    return new Promise((resolve) => {
+      activeTl2 = gsapWithCSS.timeline({
+        defaults: { duration: getMotionDuration(), ease: NAV_MOTION_EASE },
+        onComplete: () => {
+          gsapWithCSS.set(wrapper, { height: "auto", opacity: 1, clearProps: "overflow" });
+          gsapWithCSS.set(allLinks, { clearProps: "opacity,y" });
+          activeTl2 = null;
+          resolve();
+        }
+      });
+      activeTl2.to(wrapper, { height: "auto", opacity: 1 }, 0);
+      if (allLinks.length) activeTl2.to(allLinks, { opacity: 1, y: 0 }, 0);
+    });
   };
   var close = (immediate = false) => {
-    if (!isOpen && !immediate) return;
+    if (!isOpen && !immediate) return Promise.resolve();
     isOpen = false;
     if (triggerText) triggerText.textContent = "Menu";
-    const targets = [container2, ...allLinks].filter(Boolean);
+    const targets = [wrapper, ...allLinks].filter(Boolean);
+    resetActiveTimeline();
     gsapWithCSS.killTweensOf(targets);
+    if (!wrapper) return Promise.resolve();
     if (immediate) {
-      if (container2) gsapWithCSS.set(container2, { clipPath: "" });
-      if (wrapper) gsapWithCSS.set(wrapper, { display: "none" });
-      container2?.classList.add("invisible");
+      setNavDrawerOpenState(false);
+      gsapWithCSS.set(wrapper, { display: "none", height: 0, opacity: 0, clearProps: "overflow" });
       if (allLinks.length) gsapWithCSS.set(allLinks, { clearProps: "opacity,y" });
-      return;
+      return Promise.resolve();
     }
-    const origin = getClipOrigin();
-    if (allLinks.length) {
-      gsapWithCSS.to(allLinks, { opacity: 0, y: -6, duration: 0.15, ease: "power2.in", stagger: 0.03 });
-    }
-    gsapWithCSS.to(container2, {
-      clipPath: `circle(0px at ${origin})`,
-      duration: 0.45,
-      ease: "power3.inOut",
-      delay: 0.05,
-      onComplete: () => {
-        gsapWithCSS.set(container2, { clipPath: "" });
-        gsapWithCSS.set(wrapper, { display: "none" });
-        container2?.classList.add("invisible");
-        if (allLinks.length) gsapWithCSS.set(allLinks, { clearProps: "opacity,y" });
-      }
+    setNavDrawerOpenState(false);
+    const currentHeight = wrapper ? wrapper.offsetHeight : 0;
+    if (wrapper) gsapWithCSS.set(wrapper, { height: currentHeight, overflow: "hidden" });
+    return new Promise((resolve) => {
+      activeTl2 = gsapWithCSS.timeline({
+        defaults: { duration: getMotionDuration(), ease: NAV_MOTION_EASE },
+        onComplete: () => {
+          gsapWithCSS.set(wrapper, { display: "none", height: 0, opacity: 0, clearProps: "overflow" });
+          if (allLinks.length) gsapWithCSS.set(allLinks, { clearProps: "opacity,y" });
+          activeTl2 = null;
+          resolve();
+        }
+      });
+      activeTl2.to(wrapper, { height: 0, opacity: 0 }, 0);
+      if (allLinks.length) activeTl2.to(allLinks, { opacity: 0, y: -8 }, 0);
     });
   };
   var handleTriggerClick = (e) => {
@@ -43380,22 +43454,28 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     const target = e.target;
     if (!target.closest(".nav-unified")) close();
   };
+  var handleKeydown = (e) => {
+    if (e.key === "Escape") close();
+  };
   var initMobileNav = () => {
     const navRoot = document.querySelector(".nav-unified");
     if (!navRoot) return;
-    triggerLink = navRoot.querySelector('[nav-trigger="open-nav"], .nav-mobile-trigger');
-    triggerText = triggerLink?.querySelector(".nav-link-text") ?? null;
-    wrapper = navRoot.querySelector(".nav-wrapper-mobile");
-    container2 = navRoot.querySelector(".nav-container-mobile");
-    if (!triggerLink || !wrapper || !container2) return;
-    allLinks = Array.from(container2.querySelectorAll(".nav-mobile-link"));
+    triggerLink = navRoot.querySelector('[nav-trigger="open-nav"], .nav-trigger');
+    triggerText = triggerLink?.querySelector(".nav-trigger-text, .nav-link-text") ?? null;
+    wrapper = navRoot.querySelector(".nav-drawer");
+    if (!triggerLink || !wrapper) return;
+    allLinks = Array.from(
+      wrapper.querySelectorAll(".nav-link, .nav-link-simple, .nav-mobile-link")
+    );
     triggerLink.addEventListener("click", handleTriggerClick);
     document.addEventListener("click", handleOutsideClick);
     document.addEventListener("touchend", handleOutsideClick, { passive: true });
+    document.addEventListener("keydown", handleKeydown);
     cleanupFns3 = [
       () => triggerLink?.removeEventListener("click", handleTriggerClick),
       () => document.removeEventListener("click", handleOutsideClick),
-      () => document.removeEventListener("touchend", handleOutsideClick)
+      () => document.removeEventListener("touchend", handleOutsideClick),
+      () => document.removeEventListener("keydown", handleKeydown)
     ];
   };
   var closeMobileNav = (immediate = false) => close(immediate);
@@ -43405,6 +43485,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   window.Webflow.push(() => {
     initIntroSequence();
     initMobileNav();
+    initNavClock();
     greetUser("John Doe");
     patchMainWrapperCSS();
     const initialNamespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
@@ -43417,7 +43498,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     });
     import_core.default.hooks.before(() => {
       destroyIntroSequence();
-      closeMobileNav(true);
+      closeMobileNav();
     });
     import_core.default.hooks.enter(() => {
       window.scrollTo(0, 0);

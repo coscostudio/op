@@ -7,7 +7,7 @@ import { fadeTransition, patchMainWrapperCSS, updateBodyTheme } from './features
 import { barbaViews } from './features/barbaViews';
 import { destroyIntroSequence, initIntroSequence } from './features/introSequence';
 import { closeMobileNav, initMobileNav } from './features/mobileNav';
-import { updateNavCurrentState, updateNavPageState } from './features/nav';
+import { initNavClock, updateNavCurrentState, updateNavPageState } from './features/nav';
 import { initRenderToReality } from './features/renderToReality';
 import { getStoredWorkViewMode, initWorkView } from './features/workView';
 
@@ -15,6 +15,7 @@ window.Webflow ||= [];
 window.Webflow.push(() => {
   initIntroSequence();
   initMobileNav();
+  initNavClock();
 
   greetUser('John Doe');
 
@@ -37,7 +38,7 @@ window.Webflow.push(() => {
   // Kill intro if the user navigates before it finishes.
   barba.hooks.before(() => {
     destroyIntroSequence();
-    closeMobileNav(true);
+    closeMobileNav();
   });
 
   // Reset scroll on every page transition.
