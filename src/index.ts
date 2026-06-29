@@ -11,9 +11,19 @@ import { initNavClock, updateNavCurrentState, updateNavPageState } from './featu
 import { initRenderToReality } from './features/renderToReality';
 import { getStoredWorkViewMode, initWorkView } from './features/workView';
 
+const initIntroSequenceOnDomReady = () => {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initIntroSequence, { once: true });
+    return;
+  }
+
+  initIntroSequence();
+};
+
+initIntroSequenceOnDomReady();
+
 window.Webflow ||= [];
 window.Webflow.push(() => {
-  initIntroSequence();
   initMobileNav();
   initNavClock();
 

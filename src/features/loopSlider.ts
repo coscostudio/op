@@ -116,17 +116,58 @@ const ACTIVE_CARD_SELECTORS = {
   source: '.activecard-source',
   sourceTitle: '.activecard-source-title',
   sourceSubtitle: '.activecard-source-subtitle',
+  targetLink: '.activecard-details',
   targetTitle: '[data-activecard-target="title"]',
   targetSubtitle: '[data-activecard-target="subtitle"]',
 } as const;
+
+const getHrefFromElement = (element: Element | null) => {
+  if (!(element instanceof HTMLAnchorElement)) return '';
+
+  const href = element.getAttribute('href')?.trim() || '';
+  return href && href !== '#' ? href : '';
+};
+
+const getFirstHrefFromElements = (elements: Element[]) => {
+  for (const element of elements) {
+    const href = getHrefFromElement(element);
+    if (href) return href;
+  }
+
+  return '';
+};
+
+const getActiveSourceHref = (source: HTMLElement) => {
+  const sourceLink = getHrefFromElement(source.closest('a[href]'));
+  if (sourceLink) return sourceLink;
+
+  const slide = source.closest<HTMLElement>(LOOP_SLIDER_SELECTORS.item.join(','));
+  const slideLink = getHrefFromElement(slide);
+  if (slideLink) return slideLink;
+
+  const nestedLink = getFirstHrefFromElements(
+    slide ? Array.from(slide.querySelectorAll('a[href]')) : []
+  );
+  if (nestedLink) return nestedLink;
+
+  return getFirstHrefFromElements(Array.from(source.querySelectorAll('a[href]')));
+};
+
+const getActiveDetailsLink = () => {
+  const target = document.querySelector<HTMLElement>(ACTIVE_CARD_SELECTORS.targetLink);
+  if (target instanceof HTMLAnchorElement) return target;
+
+  return target?.querySelector<HTMLAnchorElement>('a') ?? null;
+};
 
 /**
  * Swap the shared active card details from the currently active slide source.
  */
 const updateActiveDetailsFromSource = (source: HTMLElement) => {
+  const targetLink = getActiveDetailsLink();
   const targetTitle = document.querySelector<HTMLElement>(ACTIVE_CARD_SELECTORS.targetTitle);
   const targetSubtitle = document.querySelector<HTMLElement>(ACTIVE_CARD_SELECTORS.targetSubtitle);
-  const hasTarget = Boolean(targetTitle || targetSubtitle);
+  const hasTarget = Boolean(targetLink || targetTitle || targetSubtitle);
 
   if (!hasTarget) {
     return false;
@@ -136,12 +177,18 @@ const updateActiveDetailsFromSource = (source: HTMLElement) => {
     source.querySelector(ACTIVE_CARD_SELECTORS.sourceTitle)?.textContent?.trim() || '';
   const sourceSubtitle =
     source.querySelector(ACTIVE_CARD_SELECTORS.sourceSubtitle)?.textContent?.trim() || '';
+  const sourceHref = getActiveSourceHref(source);
 
+  const linkMatches = !targetLink || !sourceHref || targetLink.getAttribute('href') === sourceHref;
   const titleMatches = !targetTitle || targetTitle.textContent === sourceTitle;
   const subtitleMatches = !targetSubtitle || targetSubtitle.textContent === sourceSubtitle;
 
-  if (source === currentSource && titleMatches && subtitleMatches) {
+  if (source === currentSource && linkMatches && titleMatches && subtitleMatches) {
     return false;
+  }
+
+  if (targetLink && sourceHref && targetLink.getAttribute('href') !== sourceHref) {
+    targetLink.setAttribute('href', sourceHref);
   }
 
   if (targetTitle && targetTitle.textContent !== sourceTitle) {
