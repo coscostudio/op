@@ -17,8 +17,6 @@ const TEXT_PRIMARY = 'var(--text-color--text-primary)';
 const TEXT_SECONDARY = 'var(--text-color--text-secondary)';
 const DARK_ACCENT = 'var(--base-color-brand--dark-accent)';
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
-const VISIBLE_NAV_TARGETS =
-  '.logo-container, .logo-1, .nav, .nav-link, .nav-link-text, .nav-mobile-trigger';
 const TOP_SCROLL_THRESHOLD = 4;
 const CASE_TRIGGER_OFFSET = 4;
 const NAV_BG_IN_DUR = 0.52;
@@ -115,10 +113,7 @@ const ensureLogoHitbox = (logoLink: HTMLElement) => {
 
 const ensureNavVisible = (nav: HTMLElement) => {
   gsap.killTweensOf(nav, 'opacity');
-  gsap.killTweensOf(Array.from(nav.querySelectorAll<HTMLElement>(VISIBLE_NAV_TARGETS)), 'opacity');
-  gsap.set([nav, ...Array.from(nav.querySelectorAll<HTMLElement>(VISIBLE_NAV_TARGETS))], {
-    opacity: 1,
-  });
+  gsap.set(nav, { opacity: 1 });
 };
 
 const getCurrentNamespace = () =>
@@ -417,11 +412,13 @@ const applyNavVisualState = (condensed: boolean, immediate = false) => {
   });
 };
 
-const applyNavTextState = (immediate = false) => {
+const applyNavTextState = (immediate = false, skipVisibility = false) => {
   const nav = getNav();
   if (!nav) return;
 
-  ensureNavVisible(nav);
+  if (!skipVisibility) {
+    ensureNavVisible(nav);
+  }
   ensureLogoUsesCurrentColor(nav);
 
   const textColor = resolveCssColor(getNamespaceTextColor(activeNamespace));
@@ -509,7 +506,8 @@ const installScrollListeners = () => {
 export const updateNavPageState = (
   namespace: NavNamespace | null | undefined = getCurrentNamespace(),
   container: HTMLElement | null = document.querySelector<HTMLElement>('[data-barba="container"]'),
-  immediate = false
+  immediate = false,
+  skipVisibility = false
 ) => {
   const nextNamespace = namespace ?? null;
   if (activeNamespace !== nextNamespace) currentNavTextKey = '';
@@ -517,7 +515,7 @@ export const updateNavPageState = (
   activeNamespace = nextNamespace;
   activeContainer = container;
   installScrollListeners();
-  applyNavTextState(immediate);
+  applyNavTextState(immediate, skipVisibility);
   applyNavVisualState(shouldCondense(), immediate);
 };
 

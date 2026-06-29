@@ -39490,7 +39490,6 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   var TEXT_SECONDARY = "var(--text-color--text-secondary)";
   var DARK_ACCENT = "var(--base-color-brand--dark-accent)";
   var TRANSPARENT = "rgba(0, 0, 0, 0)";
-  var VISIBLE_NAV_TARGETS = ".logo-container, .logo-1, .nav, .nav-link, .nav-link-text, .nav-mobile-trigger";
   var TOP_SCROLL_THRESHOLD = 4;
   var CASE_TRIGGER_OFFSET = 4;
   var NAV_BG_IN_DUR = 0.52;
@@ -39549,10 +39548,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   };
   var ensureNavVisible = (nav) => {
     gsapWithCSS.killTweensOf(nav, "opacity");
-    gsapWithCSS.killTweensOf(Array.from(nav.querySelectorAll(VISIBLE_NAV_TARGETS)), "opacity");
-    gsapWithCSS.set([nav, ...Array.from(nav.querySelectorAll(VISIBLE_NAV_TARGETS))], {
-      opacity: 1
-    });
+    gsapWithCSS.set(nav, { opacity: 1 });
   };
   var getCurrentNamespace = () => document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
   var createLetterClip = (path, defs, uid, label, index) => {
@@ -39791,10 +39787,12 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       overwrite: false
     });
   };
-  var applyNavTextState = (immediate = false) => {
+  var applyNavTextState = (immediate = false, skipVisibility = false) => {
     const nav = getNav();
     if (!nav) return;
-    ensureNavVisible(nav);
+    if (!skipVisibility) {
+      ensureNavVisible(nav);
+    }
     ensureLogoUsesCurrentColor(nav);
     const textColor = resolveCssColor(getNamespaceTextColor(activeNamespace));
     const textKey = [activeNamespace, textColor].join("|");
@@ -39861,13 +39859,13 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       () => window.removeEventListener("resize", requestScrollUpdate)
     ];
   };
-  var updateNavPageState = (namespace = getCurrentNamespace(), container3 = document.querySelector('[data-barba="container"]'), immediate = false) => {
+  var updateNavPageState = (namespace = getCurrentNamespace(), container3 = document.querySelector('[data-barba="container"]'), immediate = false, skipVisibility = false) => {
     const nextNamespace = namespace ?? null;
     if (activeNamespace !== nextNamespace) currentNavTextKey = "";
     activeNamespace = nextNamespace;
     activeContainer = container3;
     installScrollListeners();
-    applyNavTextState(immediate);
+    applyNavTextState(immediate, skipVisibility);
     applyNavVisualState(shouldCondense(), immediate);
   };
   var updateNavCurrentState = () => {
@@ -39927,9 +39925,13 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     // then reveal it with the same timing as page enters. The persistent nav manages
     // its own visibility so stale child opacity can never strand the links/logo.
     async once(data) {
+      const nav = document.querySelector(".nav-unified");
+      if (nav) gsapWithCSS.set(nav, { opacity: 0 });
       gsapWithCSS.set(data.next.container, { opacity: 0 });
       await waitForIntro();
-      await gsapWithCSS.to(data.next.container, {
+      const targets = [data.next.container];
+      if (nav) targets.push(nav);
+      await gsapWithCSS.to(targets, {
         opacity: 1,
         duration: 0.4,
         ease: "power1.out"
@@ -43407,7 +43409,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     patchMainWrapperCSS();
     const initialNamespace = document.querySelector("[data-barba-namespace]")?.getAttribute("data-barba-namespace");
     updateBodyTheme(initialNamespace);
-    updateNavPageState(initialNamespace, void 0, true);
+    updateNavPageState(initialNamespace, void 0, true, true);
     import_core.default.init({
       preventRunning: true,
       transitions: [fadeTransition],

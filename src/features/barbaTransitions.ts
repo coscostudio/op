@@ -66,9 +66,16 @@ export const fadeTransition = {
   // then reveal it with the same timing as page enters. The persistent nav manages
   // its own visibility so stale child opacity can never strand the links/logo.
   async once(data: { next: { container: HTMLElement } }) {
+    const nav = document.querySelector<HTMLElement>('.nav-unified');
+    if (nav) gsap.set(nav, { opacity: 0 }); // ensure it starts hidden just in case
     gsap.set(data.next.container, { opacity: 0 });
+    
     await waitForIntro();
-    await gsap.to(data.next.container, {
+    
+    const targets = [data.next.container];
+    if (nav) targets.push(nav);
+    
+    await gsap.to(targets, {
       opacity: 1,
       duration: 0.4,
       ease: 'power1.out',

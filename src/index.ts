@@ -26,7 +26,7 @@ window.Webflow.push(() => {
     .querySelector('[data-barba-namespace]')
     ?.getAttribute('data-barba-namespace');
   updateBodyTheme(initialNamespace);
-  updateNavPageState(initialNamespace, undefined, true);
+  updateNavPageState(initialNamespace, undefined, true, true);
 
   barba.init({
     preventRunning: true,
