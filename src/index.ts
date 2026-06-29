@@ -48,7 +48,7 @@ window.Webflow.push(() => {
   // Kill intro if the user navigates before it finishes.
   barba.hooks.before(() => {
     destroyIntroSequence();
-    closeMobileNav();
+    closeMobileNav(false, true);
   });
 
   // Reset scroll on every page transition.

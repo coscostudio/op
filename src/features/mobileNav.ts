@@ -114,7 +114,7 @@ const open = () => {
   });
 };
 
-const close = (immediate = false) => {
+const close = (immediate = false, keepLogoFull = false) => {
   if (!isOpen && !immediate) return Promise.resolve();
   isOpen = false;
 
@@ -144,7 +144,7 @@ const close = (immediate = false) => {
   const currentHeight = wrapper ? wrapper.getBoundingClientRect().height : 0;
   if (wrapper) gsap.set(wrapper, { height: currentHeight, overflow: 'hidden', ...targetPadding });
 
-  setNavDrawerOpenState(false);
+  setNavDrawerOpenState(false, keepLogoFull);
 
   return new Promise<void>((resolve) => {
     activeTl = gsap.timeline({
@@ -235,4 +235,5 @@ export const destroyMobileNav = () => {
   allLinks = [];
 };
 
-export const closeMobileNav = (immediate = false) => close(immediate);
+export const closeMobileNav = (immediate = false, keepLogoFull = false) =>
+  close(immediate, keepLogoFull);

@@ -66,6 +66,7 @@ let currentLogoMode: LogoMode | null = null;
 let activeNamespace: NavNamespace | null = null;
 let activeContainer: HTMLElement | null = null;
 let isDrawerOpen = false;
+let keepLogoFullUntilNextPageState = false;
 let currentNavBackgroundKey = '';
 let currentNavTextKey = '';
 let rafId = 0;
@@ -170,7 +171,8 @@ const getTransparentCssColor = (color: string) => {
 
 const getNamespaceTextColor = (namespace: NavNamespace | null | undefined, isActiveBg = false) => {
   if (isActiveBg && namespace === 'about') return LIGHT_ACCENT;
-  if (namespace === 'about' || namespace === 'cases') return TEXT_SECONDARY;
+  if (namespace === 'cases') return isActiveBg ? TEXT_PRIMARY : TEXT_SECONDARY;
+  if (namespace === 'about') return TEXT_SECONDARY;
   return TEXT_PRIMARY;
 };
 
@@ -470,7 +472,13 @@ const setLogoMode = (mode: LogoMode, immediate = false) => {
   }
 };
 
-export const setNavDrawerOpenState = (open: boolean) => {
+export const setNavDrawerOpenState = (open: boolean, keepLogoFull = false) => {
+  if (keepLogoFull) {
+    keepLogoFullUntilNextPageState = true;
+  } else if (open) {
+    keepLogoFullUntilNextPageState = false;
+  }
+
   if (isDrawerOpen === open) return;
   isDrawerOpen = open;
   applyNavVisualState(shouldCondense());
@@ -478,8 +486,8 @@ export const setNavDrawerOpenState = (open: boolean) => {
 
 const applyNavVisualState = (condensed: boolean, immediate = false, skipVisibility = false) => {
   if (activeNamespace === 'home') condensed = false;
-  if (isDrawerOpen) condensed = false; // drawer forces full logo
 
+  if (isDrawerOpen || keepLogoFullUntilNextPageState) condensed = false; // drawer/transition forces full logo
   const isActiveBg = condensed || isDrawerOpen;
 
   applyNavTextState(isActiveBg, immediate, skipVisibility);
@@ -606,6 +614,7 @@ export const updateNavPageState = (
   immediate = false,
   skipVisibility = false
 ) => {
+  keepLogoFullUntilNextPageState = false;
   const nextNamespace = namespace ?? null;
   if (activeNamespace !== nextNamespace) currentNavTextKey = '';
 

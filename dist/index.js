@@ -39513,6 +39513,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   var activeNamespace = null;
   var activeContainer = null;
   var isDrawerOpen = false;
+  var keepLogoFullUntilNextPageState = false;
   var currentNavBackgroundKey = "";
   var currentNavTextKey = "";
   var rafId = 0;
@@ -39593,7 +39594,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
   };
   var getNamespaceTextColor = (namespace, isActiveBg = false) => {
     if (isActiveBg && namespace === "about") return LIGHT_ACCENT;
-    if (namespace === "about" || namespace === "cases") return TEXT_SECONDARY;
+    if (namespace === "cases") return isActiveBg ? TEXT_PRIMARY : TEXT_SECONDARY;
+    if (namespace === "about") return TEXT_SECONDARY;
     return TEXT_PRIMARY;
   };
   var getNamespaceBackground = (namespace) => {
@@ -39832,14 +39834,19 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       tl.to(motionState, { duration: PAREN_EXPAND_DUR, ease: NAV_MOTION_EASE, parenX: 0 }, 0);
     }
   };
-  var setNavDrawerOpenState = (open2) => {
+  var setNavDrawerOpenState = (open2, keepLogoFull = false) => {
+    if (keepLogoFull) {
+      keepLogoFullUntilNextPageState = true;
+    } else if (open2) {
+      keepLogoFullUntilNextPageState = false;
+    }
     if (isDrawerOpen === open2) return;
     isDrawerOpen = open2;
     applyNavVisualState(shouldCondense());
   };
   var applyNavVisualState = (condensed, immediate = false, skipVisibility = false) => {
     if (activeNamespace === "home") condensed = false;
-    if (isDrawerOpen) condensed = false;
+    if (isDrawerOpen || keepLogoFullUntilNextPageState) condensed = false;
     const isActiveBg = condensed || isDrawerOpen;
     applyNavTextState(isActiveBg, immediate, skipVisibility);
     const activeBackgroundColor = resolveCssColor(getNamespaceBackground(activeNamespace));
@@ -39933,6 +39940,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     ];
   };
   var updateNavPageState = (namespace = getCurrentNamespace(), container2 = document.querySelector('[data-barba="container"]'), immediate = false, skipVisibility = false) => {
+    keepLogoFullUntilNextPageState = false;
     const nextNamespace = namespace ?? null;
     if (activeNamespace !== nextNamespace) currentNavTextKey = "";
     activeNamespace = nextNamespace;
@@ -43502,7 +43510,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       if (allLinks.length) activeTl2.to(allLinks, { opacity: 1, y: 0 }, 0);
     });
   };
-  var close = (immediate = false) => {
+  var close = (immediate = false, keepLogoFull = false) => {
     if (!isOpen && !immediate) return Promise.resolve();
     isOpen = false;
     if (triggerText) triggerText.textContent = "Menu";
@@ -43525,7 +43533,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     const targetPadding = getDrawerPadding();
     const currentHeight = wrapper ? wrapper.getBoundingClientRect().height : 0;
     if (wrapper) gsapWithCSS.set(wrapper, { height: currentHeight, overflow: "hidden", ...targetPadding });
-    setNavDrawerOpenState(false);
+    setNavDrawerOpenState(false, keepLogoFull);
     return new Promise((resolve) => {
       activeTl2 = gsapWithCSS.timeline({
         defaults: { duration: getMotionDuration(), ease: NAV_MOTION_EASE },
@@ -43591,7 +43599,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
       () => document.removeEventListener("keydown", handleKeydown)
     ];
   };
-  var closeMobileNav = (immediate = false) => close(immediate);
+  var closeMobileNav = (immediate = false, keepLogoFull = false) => close(immediate, keepLogoFull);
 
   // src/index.ts
   var initIntroSequenceOnDomReady = () => {
@@ -43618,7 +43626,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))} pos: ${this.timeli
     });
     import_core.default.hooks.before(() => {
       destroyIntroSequence();
-      closeMobileNav();
+      closeMobileNav(false, true);
     });
     import_core.default.hooks.enter(() => {
       window.scrollTo(0, 0);
