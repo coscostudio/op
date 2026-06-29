@@ -15,7 +15,7 @@ const LOGO_HITBOX_CLASS = 'op-logo-hitbox';
 
 const TEXT_PRIMARY = 'var(--text-color--text-primary)';
 const TEXT_SECONDARY = 'var(--text-color--text-secondary)';
-const DARK_ACCENT = 'var(--base-color-brand--dark-accent)';
+const DARK_ACCENT = 'var(--base-color-brand--nav-bg)';
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 const TOP_SCROLL_THRESHOLD = 4;
 const CASE_TRIGGER_OFFSET = 4;
