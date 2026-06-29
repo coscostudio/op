@@ -7,7 +7,7 @@ import { fadeTransition, patchMainWrapperCSS, updateBodyTheme } from './features
 import { barbaViews } from './features/barbaViews';
 import { destroyIntroSequence, initIntroSequence } from './features/introSequence';
 import { closeMobileNav, initMobileNav } from './features/mobileNav';
-import { updateNavCurrentState } from './features/nav';
+import { updateNavCurrentState, updateNavPageState } from './features/nav';
 import { initRenderToReality } from './features/renderToReality';
 import { getStoredWorkViewMode, initWorkView } from './features/workView';
 
@@ -26,6 +26,7 @@ window.Webflow.push(() => {
     .querySelector('[data-barba-namespace]')
     ?.getAttribute('data-barba-namespace');
   updateBodyTheme(initialNamespace);
+  updateNavPageState(initialNamespace, undefined, true);
 
   barba.init({
     preventRunning: true,
@@ -65,6 +66,7 @@ window.Webflow.push(() => {
 
     // Re-show the container regardless of namespace
     gsap.to(barbaContainer, { opacity: 1, duration: 0.4, ease: 'power1.out' });
+    updateNavPageState(namespace, barbaContainer);
 
     if (namespace === 'work') {
       const savedMode = getStoredWorkViewMode();

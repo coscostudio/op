@@ -135,6 +135,9 @@ function prepareIntroLogo(svg: SVGSVGElement, logoEl: HTMLElement | null): void 
   const logoEmbed = svg.closest<HTMLElement>('.logo-1');
 
   gsap.set([logoEl, logoEmbed, svg].filter(Boolean), { overflow: 'visible' });
+  gsap.set([logoEl, logoEmbed, svg].filter(Boolean), {
+    color: 'var(--text-color--text-secondary)',
+  });
   if (logoEmbed) gsap.set(logoEmbed, { display: 'block', lineHeight: 0 });
   gsap.set(svg, { display: 'block' });
   svg.setAttribute('overflow', 'visible');

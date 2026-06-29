@@ -1,9 +1,7 @@
 import gsap from 'gsap';
 
 import { waitForIntro } from './introSequence';
-
-/** Persistent nav/logo that lives outside the barba wrapper — revealed once on hard load only. */
-export const PERSISTENT_NAV = '.logo-container, .nav, .nav-wrapper-mobile';
+import { updateNavPageState } from './nav';
 
 /**
  * Inject a CSS rule at module load time so every barba container is hidden the instant
@@ -64,12 +62,13 @@ export const fadeTransition = {
   name: 'fade',
 
   // ── Hard load ─────────────────────────────────────────────────────────────────
-  // Keep native content and persistent nav hidden until the global intro overlay
-  // has fully faded out, then reveal them with the same timing as page enters.
+  // Keep native content hidden until the global intro overlay has fully faded out,
+  // then reveal it with the same timing as page enters. The persistent nav manages
+  // its own visibility so stale child opacity can never strand the links/logo.
   async once(data: { next: { container: HTMLElement } }) {
-    gsap.set([data.next.container, PERSISTENT_NAV], { opacity: 0 });
+    gsap.set(data.next.container, { opacity: 0 });
     await waitForIntro();
-    await gsap.to([data.next.container, PERSISTENT_NAV], {
+    await gsap.to(data.next.container, {
       opacity: 1,
       duration: 0.4,
       ease: 'power1.out',
@@ -99,6 +98,7 @@ export const fadeTransition = {
   // absorbed by the simultaneous fade — not visible as an isolated background flash.
   async enter(data: { next: { container: HTMLElement; namespace: string } }) {
     updateBodyTheme(data.next.namespace);
+    updateNavPageState(data.next.namespace, data.next.container);
     await gsap.to(data.next.container, {
       opacity: 1,
       duration: 0.4,
