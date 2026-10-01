@@ -1,14 +1,13 @@
 import gsap from 'gsap';
 
 import { destroyCaseSliders, initCaseSliders } from './caseSlider';
+import { destroyHomeFanWheel, initHomeFanWheel, refreshHomeFanWheel } from './homeFanWheel';
 import { waitForIntro } from './introSequence';
-import { destroyLoopSlider, initLoopSlider, remeasureLoopSlider } from './loopSlider';
 import { destroyRenderToReality, initRenderToReality } from './renderToReality';
 import {
   destroyHomeVideoPlayers,
   destroyPageVideoPlayers,
   initPageVideoPlayers,
-  initVideoPlayers,
 } from './videoPlayer';
 import { destroyWorkView, getStoredWorkViewMode, initWorkView } from './workView';
 
@@ -26,17 +25,13 @@ export const barbaViews = [
     namespace: 'home',
 
     beforeLeave() {
-      destroyLoopSlider();
+      destroyHomeFanWheel();
       destroyHomeVideoPlayers();
       destroyPageVideoPlayers();
     },
 
     beforeEnter({ next }: Pick<ViewData, 'next'>) {
-      // Snap attribute ensures the slider measures and snaps focus/blur state
-      // before anything is visible — prevents all-blurred initial render.
-      document.body.setAttribute('data-loop-slider-snap', '');
-      initLoopSlider();
-      initVideoPlayers();
+      initHomeFanWheel(next.container);
       initPageVideoPlayers(next.container);
 
       // NOTE: .home-blurb (position:fixed, mix-blend-mode:difference) is intentionally
@@ -50,7 +45,7 @@ export const barbaViews = [
       // remeasure fires after the overlay is gone (correct visibility state).
       // On barba transitions: waitForIntro resolves immediately.
       waitForIntro().then(() => {
-        requestAnimationFrame(() => remeasureLoopSlider());
+        requestAnimationFrame(() => refreshHomeFanWheel());
       });
     },
   },
