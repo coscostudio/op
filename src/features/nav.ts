@@ -16,9 +16,6 @@ const LOGO_HITBOX_CLASS = 'op-logo-hitbox';
 const TEXT_PRIMARY = 'var(--text-color--text-primary)';
 const TEXT_SECONDARY = 'var(--text-color--text-secondary)';
 const LIGHT_ACCENT = 'var(--base-color-brand--light-accent)';
-const BACKGROUND_PRIMARY = 'var(--base-color-brand--nav-bg-light)';
-const BACKGROUND_SECONDARY = 'var(--base-color-brand--nav-bg-dark)';
-const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 const TOP_SCROLL_THRESHOLD = 4;
 const CASE_TRIGGER_OFFSET = 4;
 export const NAV_MOTION_DURATION = 0.52;
@@ -67,7 +64,6 @@ let activeNamespace: NavNamespace | null = null;
 let activeContainer: HTMLElement | null = null;
 let isDrawerOpen = false;
 let keepLogoFullUntilNextPageState = false;
-let currentNavBackgroundKey = '';
 let currentNavTextKey = '';
 let rafId = 0;
 let navClockTimer: number | null = null;
@@ -151,34 +147,11 @@ const resolveCssColor = (color: string) => {
   return resolved || color;
 };
 
-const getRenderedCssColor = (color: string) => {
-  const probe = document.createElement('span');
-  probe.style.color = color;
-  document.documentElement.appendChild(probe);
-  const rendered = getComputedStyle(probe).color;
-  probe.remove();
-  return rendered || color;
-};
-
-const getTransparentCssColor = (color: string) => {
-  const channels = getRenderedCssColor(color)
-    .match(/[\d.]+/g)
-    ?.slice(0, 3);
-
-  if (!channels || channels.length < 3) return TRANSPARENT;
-  return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, 0)`;
-};
-
 const getNamespaceTextColor = (namespace: NavNamespace | null | undefined, isActiveBg = false) => {
   if (isActiveBg && namespace === 'about') return LIGHT_ACCENT;
   if (namespace === 'cases') return isActiveBg ? TEXT_PRIMARY : TEXT_SECONDARY;
   if (namespace === 'about') return TEXT_SECONDARY;
   return TEXT_PRIMARY;
-};
-
-const getNamespaceBackground = (namespace: NavNamespace | null | undefined) => {
-  if (namespace === 'about') return BACKGROUND_SECONDARY;
-  return BACKGROUND_PRIMARY;
 };
 
 const remToPx = (rem: number) =>
@@ -492,29 +465,12 @@ const applyNavVisualState = (condensed: boolean, immediate = false, skipVisibili
 
   applyNavTextState(isActiveBg, immediate, skipVisibility);
 
-  const activeBackgroundColor = resolveCssColor(getNamespaceBackground(activeNamespace));
-  const backgroundColor = isActiveBg
-    ? activeBackgroundColor
-    : getTransparentCssColor(activeBackgroundColor);
-  const backgroundKey = [condensed, isDrawerOpen, backgroundColor].join('|');
-
-  if (!immediate && backgroundKey === currentNavBackgroundKey) return;
-
   const nav = getNav();
   if (!nav) return;
 
-  currentNavBackgroundKey = backgroundKey;
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const backgroundDuration = immediate || reducedMotion ? 0 : NAV_MOTION_DURATION;
-
-  setLogoMode(condensed ? 'condensed' : 'full', immediate);
   gsap.killTweensOf(nav, 'backgroundColor');
-  gsap.to(nav, {
-    backgroundColor,
-    duration: backgroundDuration,
-    ease: NAV_MOTION_EASE,
-    overwrite: 'auto',
-  });
+  nav.style.setProperty('background', 'transparent', 'important');
+  setLogoMode(condensed ? 'condensed' : 'full', immediate);
 };
 
 const applyNavTextState = (isActiveBg = false, immediate = false, skipVisibility = false) => {

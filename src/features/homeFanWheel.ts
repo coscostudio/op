@@ -23,7 +23,7 @@ import {
 } from 'three';
 
 const FAN_STYLE_ID = 'home-fan-wheel-styles';
-const MOBILE_BREAKPOINT = 767;
+const MOBILE_BREAKPOINT = 479;
 const TWO_PI = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
 
@@ -50,8 +50,8 @@ const SELECTORS = {
 
 const CONFIG = {
   idleSpeed: 0.24,
-  desktopCardWidth: 1.82,
-  mobileCardWidth: 0.92,
+  desktopCardWidth: 2.05,
+  mobileCardWidth: 1.22,
   desktopAspect: 4 / 3,
   mobileAspect: 3 / 4,
   desktopInnerAxisGap: 0.8,
@@ -68,10 +68,15 @@ const CONFIG = {
   featuredDamping: 12,
   featuredTransitionDuration: 0.48,
   returnTransitionDuration: 0.44,
-  wheelFitPadding: 1.06,
+  desktopWheelFitPadding: 0.92,
+  mobileWheelFitPadding: 0.94,
+  mobileLandscapeWheelFitPadding: 0.9,
   maxPixelRatio: 1.8,
   wheelRotateSpeed: 0.0008,
-  maxSpinSpeed: 0.95,
+  maxSpinSpeed: 1.35,
+  maxInputSpinSpeed: 0.95,
+  wheelSpinDamping: 2.5,
+  dragReleaseBoost: 1.55,
   maxWheelAngleStep: 0.075,
   featuredDragThrowSeconds: 0.18,
   featuredDragThrowLimit: 1.2,
@@ -487,6 +492,7 @@ class HomeFanWheel {
   private destroyed = false;
   private isTransitioning = false;
   private cameraMode: 'WHEEL' | 'FEATURED' = 'WHEEL';
+  private cameraLookTargetY = 0;
   private baseAngle = HALF_PI;
   private spinDirection = 1;
   private currentSpeed = 0;
@@ -716,41 +722,111 @@ class HomeFanWheel {
       boundsRadius / Math.tan(verticalFov / 2),
       boundsRadius / Math.tan(horizontalFov / 2)
     );
-    const distance = fitDistance * CONFIG.wheelFitPadding;
+    const shortSide = Math.min(this.getViewportWidth(), this.getViewportHeight());
+    const fitPadding =
+      shortSide <= MOBILE_BREAKPOINT
+        ? this.getViewportWidth() > this.getViewportHeight()
+          ? CONFIG.mobileLandscapeWheelFitPadding
+          : CONFIG.mobileWheelFitPadding
+        : CONFIG.desktopWheelFitPadding;
+    const distance = fitDistance * fitPadding;
     const direction = new Vector3(0, 4, 10).normalize();
 
     return new Vector3(direction.x * distance, direction.y * distance, direction.z * distance);
+  }
+
+  private getWheelFraming() {
+    const basePosition = this.getWheelCameraPosition();
+    const originalPosition = this.camera.position.clone();
+    const originalQuaternion = this.camera.quaternion.clone();
+    const { width, height } = this.getCardDimensions();
+    const radius = this.getRadius();
+    const count = Math.max(this.items.length, 1);
+    const halfFovTangent = Math.tan((this.camera.fov * Math.PI) / 360);
+    const elevationCosine = basePosition.z / basePosition.length();
+    let targetY = 0;
+
+    // Recenter the projected wheel bounds; the near half is enlarged by perspective.
+    for (let pass = 0; pass < 3; pass += 1) {
+      this.camera.position.set(basePosition.x, basePosition.y + targetY, basePosition.z);
+      this.camera.lookAt(0, targetY, 0);
+      this.camera.updateMatrixWorld(true);
+
+      let minY = Infinity;
+      let maxY = -Infinity;
+      const point = new Vector3();
+
+      for (let index = 0; index < count; index += 1) {
+        const theta = (TWO_PI * index) / count + this.baseAngle;
+        const cosTheta = Math.cos(theta);
+        const sinTheta = Math.sin(theta);
+
+        for (const localX of [-width / 2, width / 2]) {
+          for (const localY of [-height / 2, height / 2]) {
+            point
+              .set((radius + localX) * cosTheta, localY, (radius + localX) * sinTheta)
+              .project(this.camera);
+            minY = Math.min(minY, point.y);
+            maxY = Math.max(maxY, point.y);
+          }
+        }
+      }
+
+      if (!Number.isFinite(minY) || !Number.isFinite(maxY)) break;
+      const projectedCenterY = (minY + maxY) / 2;
+      targetY +=
+        (projectedCenterY * basePosition.length() * halfFovTangent) /
+        Math.max(elevationCosine, 0.1);
+    }
+
+    this.camera.position.copy(originalPosition);
+    this.camera.quaternion.copy(originalQuaternion);
+    this.camera.updateMatrixWorld(true);
+
+    return {
+      position: basePosition.add(new Vector3(0, targetY, 0)),
+      targetY,
+    };
   }
 
   private applyCameraMode(mode: 'WHEEL' | 'FEATURED', immediate = false) {
     this.cameraMode = mode;
     this.cameraTween?.kill();
 
-    const target =
+    const framing =
       mode === 'FEATURED'
-        ? new Vector3(0, CONFIG.featuredCameraY, CONFIG.featuredCameraZ)
-        : this.getWheelCameraPosition();
+        ? {
+            position: new Vector3(0, CONFIG.featuredCameraY, CONFIG.featuredCameraZ),
+            targetY: CONFIG.featuredCameraY,
+          }
+        : this.getWheelFraming();
 
     if (immediate || this.prefersReducedMotion) {
-      this.camera.position.copy(target);
-      this.camera.lookAt(0, 0, 0);
+      this.camera.position.copy(framing.position);
+      this.cameraLookTargetY = framing.targetY;
+      this.camera.lookAt(0, this.cameraLookTargetY, 0);
       this.camera.updateProjectionMatrix();
       return;
     }
 
-    this.cameraTween = gsap.to(this.camera.position, {
-      x: target.x,
-      y: target.y,
-      z: target.z,
+    const startPosition = this.camera.position.clone();
+    const startLookTargetY = this.cameraLookTargetY;
+    const progress = { value: 0 };
+    this.cameraTween = gsap.to(progress, {
+      value: 1,
       duration: CONFIG.featuredTransitionDuration,
       ease: 'power2.inOut',
       overwrite: 'auto',
       onUpdate: () => {
-        this.camera.lookAt(0, 0, 0);
+        this.camera.position.lerpVectors(startPosition, framing.position, progress.value);
+        this.cameraLookTargetY = lerp(startLookTargetY, framing.targetY, progress.value);
+        this.camera.lookAt(0, this.cameraLookTargetY, 0);
       },
       onComplete: () => {
         this.cameraTween = null;
-        this.camera.lookAt(0, 0, 0);
+        this.camera.position.copy(framing.position);
+        this.cameraLookTargetY = framing.targetY;
+        this.camera.lookAt(0, this.cameraLookTargetY, 0);
       },
     });
   }
@@ -1042,7 +1118,7 @@ class HomeFanWheel {
     }
 
     if (!isWheelDragActive) {
-      const alpha = 1 - Math.exp(-3.8 * dt);
+      const alpha = 1 - Math.exp(-CONFIG.wheelSpinDamping * dt);
       this.currentSpeed = clamp(
         lerp(this.currentSpeed, this.targetSpeed, alpha),
         -CONFIG.maxSpinSpeed,
@@ -1115,8 +1191,8 @@ class HomeFanWheel {
     this.spinDirection = Math.sign(boundedAngleDelta);
     const inputSpeed = clamp(
       boundedAngleDelta / Math.max(deltaTimeSeconds, 1 / 120),
-      -CONFIG.maxSpinSpeed,
-      CONFIG.maxSpinSpeed
+      -CONFIG.maxInputSpinSpeed,
+      CONFIG.maxInputSpinSpeed
     );
     this.currentSpeed =
       this.currentSpeed !== 0 && Math.sign(this.currentSpeed) !== Math.sign(inputSpeed)
@@ -1142,6 +1218,19 @@ class HomeFanWheel {
     const dy = event.clientY - bounds.top - bounds.height / 2;
     if (Math.hypot(dx, dy) < 16) return null;
     return Math.atan2(dy, dx);
+  }
+
+  private updateWheelPointerInput(event: PointerEvent) {
+    const now = performance.now();
+    const deltaTime = Math.max(now - this.lastPointerTime, 1) / 1000;
+    const pointerAngle = this.getWheelPointerAngle(event);
+    if (pointerAngle !== null && this.lastPointerAngle !== null) {
+      const angleDelta = normalizeAngle(pointerAngle - this.lastPointerAngle);
+      this.applyWheelAngleInput(angleDelta, deltaTime, CONFIG.maxDragAngleStep);
+    }
+    this.lastPointerAngle = pointerAngle;
+    this.lastPointerX = event.clientX;
+    this.lastPointerTime = now;
   }
 
   private applyRadialTransforms(alpha: number) {
@@ -1457,16 +1546,7 @@ class HomeFanWheel {
     if (this.isPointerDown && this.state !== 'FEATURED_SLIDER') {
       if (!this.isWheelDragging) return;
 
-      const now = performance.now();
-      const deltaTime = Math.max(now - this.lastPointerTime, 1) / 1000;
-      const pointerAngle = this.getWheelPointerAngle(event);
-      if (pointerAngle !== null && this.lastPointerAngle !== null) {
-        const angleDelta = normalizeAngle(pointerAngle - this.lastPointerAngle);
-        this.applyWheelAngleInput(angleDelta, deltaTime, CONFIG.maxDragAngleStep);
-      }
-      this.lastPointerAngle = pointerAngle;
-      this.lastPointerX = event.clientX;
-      this.lastPointerTime = now;
+      this.updateWheelPointerInput(event);
       return;
     }
 
@@ -1501,6 +1581,7 @@ class HomeFanWheel {
 
     if (this.isWheelDragging) {
       this.setHovered(null);
+      this.currentSpeed = 0;
     } else if (this.state === 'FEATURED_SLIDER') {
       this.layoutTween?.kill();
       this.layoutTween = null;
@@ -1525,6 +1606,8 @@ class HomeFanWheel {
   private onPointerUp(event: PointerEvent) {
     if (!this.isPointerDown) return;
 
+    const wasWheelDrag = this.isWheelDragging;
+    if (wasWheelDrag) this.updateWheelPointerInput(event);
     this.isPointerDown = false;
     this.isWheelDragging = false;
     this.lastPointerAngle = null;
@@ -1535,6 +1618,15 @@ class HomeFanWheel {
     const deltaX = event.clientX - this.pointerDownCoords.x;
     const distance = Math.hypot(deltaX, event.clientY - this.pointerDownCoords.y);
     const isClick = distance < 12 && elapsed < 280;
+    const wasWheelGesture = wasWheelDrag && !isClick && distance >= 4;
+    if (wasWheelGesture && !this.prefersReducedMotion) {
+      this.currentSpeed = clamp(
+        this.currentSpeed * CONFIG.dragReleaseBoost,
+        -CONFIG.maxSpinSpeed,
+        CONFIG.maxSpinSpeed
+      );
+      if (this.currentSpeed !== 0) this.spinDirection = Math.sign(this.currentSpeed);
+    }
 
     if (this.state === 'FEATURED_SLIDER') {
       const wasSliderDrag = this.isFeaturedDragging && Math.abs(deltaX) > 12;
