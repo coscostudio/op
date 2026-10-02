@@ -71,12 +71,12 @@ const CONFIG = {
   wheelFitPadding: 1.06,
   maxPixelRatio: 1.8,
   wheelRotateSpeed: 0.0008,
-  dragRotateSpeed: 0.0025,
   maxSpinSpeed: 0.95,
   maxWheelAngleStep: 0.075,
   featuredDragThrowSeconds: 0.18,
   featuredDragThrowLimit: 1.2,
   maxFeaturedDragSpeed: 5,
+  maxDragAngleStep: 0.14,
   featuredCameraY: 0,
   featuredCameraZ: 8.2,
 };
@@ -324,8 +324,9 @@ const injectFanStyles = () => {
   style.id = FAN_STYLE_ID;
   style.textContent = `
     .home-fan-wheel {
-      position: relative !important;
-      width: 100%;
+      position: fixed !important;
+      inset: 0;
+      width: 100vw;
       height: 100dvh;
       min-height: 0;
       overflow: hidden !important;
@@ -487,6 +488,7 @@ class HomeFanWheel {
   private isTransitioning = false;
   private cameraMode: 'WHEEL' | 'FEATURED' = 'WHEEL';
   private baseAngle = HALF_PI;
+  private spinDirection = 1;
   private currentSpeed = 0;
   private targetSpeed = CONFIG.idleSpeed;
   private hovered: FanBinding | null = null;
@@ -503,12 +505,13 @@ class HomeFanWheel {
   private featuredDragVelocity = 0;
   private lastWheelInputTime = 0;
   private isPointerDown = false;
-  private dragStartedOnCard = false;
+  private isWheelDragging = false;
   private isFeaturedDragging = false;
   private pointerDownTime = 0;
   private pointerDownCoords = { x: 0, y: 0 };
   private lastPointerX = 0;
   private lastPointerTime = 0;
+  private lastPointerAngle: number | null = null;
 
   private readonly handlePointerMove = this.onPointerMove.bind(this);
   private readonly handlePointerDown = this.onPointerDown.bind(this);
@@ -1028,21 +1031,18 @@ class HomeFanWheel {
       return;
     }
 
-    this.targetSpeed =
-      this.isPointerDown && this.dragStartedOnCard
-        ? 0
-        : this.state === 'HOVER'
-          ? CONFIG.idleSpeed * CONFIG.hoverSlowdownFactor
-          : CONFIG.idleSpeed;
+    const isWheelDragActive = this.isPointerDown && this.isWheelDragging;
+    const spinMultiplier = this.state === 'HOVER' ? CONFIG.hoverSlowdownFactor : 1;
+    this.targetSpeed = isWheelDragActive
+      ? 0
+      : this.spinDirection * CONFIG.idleSpeed * spinMultiplier;
 
     if (this.prefersReducedMotion) {
       this.targetSpeed = 0;
     }
 
-    if (this.isPointerDown && this.dragStartedOnCard) {
-      this.currentSpeed *= Math.exp(-12 * dt);
-    } else {
-      const alpha = 1 - Math.exp(-12 * dt);
+    if (!isWheelDragActive) {
+      const alpha = 1 - Math.exp(-3.8 * dt);
       this.currentSpeed = clamp(
         lerp(this.currentSpeed, this.targetSpeed, alpha),
         -CONFIG.maxSpinSpeed,
@@ -1107,26 +1107,41 @@ class HomeFanWheel {
     });
   }
 
-  private applyWheelInput(
-    deltaPixels: number,
-    deltaTimeSeconds: number,
-    sensitivity = CONFIG.wheelRotateSpeed,
-    maxAngleStep = CONFIG.maxWheelAngleStep,
-    limitByTime = false
-  ) {
-    const angleLimit = limitByTime
-      ? Math.min(maxAngleStep, CONFIG.maxSpinSpeed * Math.max(deltaTimeSeconds, 1 / 120))
-      : maxAngleStep;
-    const angleDelta = clamp(deltaPixels * sensitivity, -angleLimit, angleLimit);
-    if (!angleDelta) return;
+  private applyWheelAngleInput(angleDelta: number, deltaTimeSeconds: number, maxAngleStep: number) {
+    const boundedAngleDelta = clamp(angleDelta, -maxAngleStep, maxAngleStep);
+    if (!boundedAngleDelta) return;
 
-    this.baseAngle += angleDelta;
+    this.baseAngle += boundedAngleDelta;
+    this.spinDirection = Math.sign(boundedAngleDelta);
     const inputSpeed = clamp(
-      angleDelta / Math.max(deltaTimeSeconds, 1 / 120),
+      boundedAngleDelta / Math.max(deltaTimeSeconds, 1 / 120),
       -CONFIG.maxSpinSpeed,
       CONFIG.maxSpinSpeed
     );
-    this.currentSpeed = lerp(this.currentSpeed, inputSpeed, 0.35);
+    this.currentSpeed =
+      this.currentSpeed !== 0 && Math.sign(this.currentSpeed) !== Math.sign(inputSpeed)
+        ? inputSpeed
+        : lerp(this.currentSpeed, inputSpeed, 0.35);
+  }
+
+  private applyWheelInput(
+    deltaPixels: number,
+    deltaTimeSeconds: number,
+    sensitivity = CONFIG.wheelRotateSpeed
+  ) {
+    this.applyWheelAngleInput(
+      deltaPixels * sensitivity,
+      deltaTimeSeconds,
+      CONFIG.maxWheelAngleStep
+    );
+  }
+
+  private getWheelPointerAngle(event: PointerEvent) {
+    const bounds = this.stage.getBoundingClientRect();
+    const dx = event.clientX - bounds.left - bounds.width / 2;
+    const dy = event.clientY - bounds.top - bounds.height / 2;
+    if (Math.hypot(dx, dy) < 16) return null;
+    return Math.atan2(dy, dx);
   }
 
   private applyRadialTransforms(alpha: number) {
@@ -1378,7 +1393,9 @@ class HomeFanWheel {
       this.featuredTargetPosition = 0;
       this.featuredWheelIdle = 0;
       this.featuredDragVelocity = 0;
-      this.currentSpeed = this.prefersReducedMotion ? 0 : CONFIG.idleSpeed * 0.4;
+      this.currentSpeed = this.prefersReducedMotion
+        ? 0
+        : this.spinDirection * CONFIG.idleSpeed * 0.4;
       this.updateActiveFromFront(true);
       this.updateCursor(null);
     };
@@ -1438,18 +1455,16 @@ class HomeFanWheel {
     }
 
     if (this.isPointerDown && this.state !== 'FEATURED_SLIDER') {
-      if (!this.dragStartedOnCard) return;
+      if (!this.isWheelDragging) return;
 
       const now = performance.now();
-      const deltaX = event.clientX - this.lastPointerX;
       const deltaTime = Math.max(now - this.lastPointerTime, 1) / 1000;
-      this.applyWheelInput(
-        -deltaX,
-        deltaTime,
-        CONFIG.dragRotateSpeed,
-        CONFIG.maxWheelAngleStep,
-        true
-      );
+      const pointerAngle = this.getWheelPointerAngle(event);
+      if (pointerAngle !== null && this.lastPointerAngle !== null) {
+        const angleDelta = normalizeAngle(pointerAngle - this.lastPointerAngle);
+        this.applyWheelAngleInput(angleDelta, deltaTime, CONFIG.maxDragAngleStep);
+      }
+      this.lastPointerAngle = pointerAngle;
       this.lastPointerX = event.clientX;
       this.lastPointerTime = now;
       return;
@@ -1474,19 +1489,18 @@ class HomeFanWheel {
 
     this.stage.focus({ preventScroll: true });
     this.updatePointer(event);
-    const hit = this.pickBindingAtPointer();
     this.isPointerDown = true;
-    this.dragStartedOnCard = Boolean(hit);
     this.isFeaturedDragging = this.state === 'FEATURED_SLIDER' && !this.isTransitioning;
+    this.isWheelDragging = this.state !== 'FEATURED_SLIDER' && !this.isTransitioning;
+    this.lastPointerAngle = this.isWheelDragging ? this.getWheelPointerAngle(event) : null;
     if (this.isFeaturedDragging) {
       this.featuredTargetPosition = this.featuredPosition;
       this.featuredWheelIdle = 0;
       this.featuredDragVelocity = 0;
     }
 
-    if (this.state !== 'FEATURED_SLIDER' && hit) {
+    if (this.isWheelDragging) {
       this.setHovered(null);
-      this.currentSpeed = 0;
     } else if (this.state === 'FEATURED_SLIDER') {
       this.layoutTween?.kill();
       this.layoutTween = null;
@@ -1495,7 +1509,7 @@ class HomeFanWheel {
 
     this.stage.classList.toggle(
       'is-dragging',
-      this.state === 'FEATURED_SLIDER' || this.dragStartedOnCard
+      this.state === 'FEATURED_SLIDER' || this.isWheelDragging
     );
     this.pointerDownTime = performance.now();
     this.pointerDownCoords = { x: event.clientX, y: event.clientY };
@@ -1512,6 +1526,8 @@ class HomeFanWheel {
     if (!this.isPointerDown) return;
 
     this.isPointerDown = false;
+    this.isWheelDragging = false;
+    this.lastPointerAngle = null;
     this.stage.classList.remove('is-dragging');
     this.updatePointer(event);
 
@@ -1539,7 +1555,6 @@ class HomeFanWheel {
         );
         this.featuredWheelIdle = 0;
         this.featuredDragVelocity = 0;
-        this.dragStartedOnCard = false;
         this.updateCursor(this.pickBindingAtPointer());
         return;
       }
@@ -1559,13 +1574,11 @@ class HomeFanWheel {
         );
         this.featuredWheelIdle = 0;
         this.featuredDragVelocity = 0;
-        this.dragStartedOnCard = false;
         return;
       }
 
       const hit = this.pickBindingAtPointer();
       if (!hit) {
-        this.dragStartedOnCard = false;
         this.releaseFeatured();
         return;
       }
@@ -1575,13 +1588,11 @@ class HomeFanWheel {
       } else {
         this.setActiveIndex(hit.index);
       }
-      this.dragStartedOnCard = false;
       this.updateCursor(this.pickBindingAtPointer());
       return;
     }
 
     if (!isClick || this.isTransitioning) {
-      this.dragStartedOnCard = false;
       this.setHovered(this.pickBindingAtPointer());
       return;
     }
@@ -1592,7 +1603,6 @@ class HomeFanWheel {
     } else {
       this.setHovered(null);
     }
-    this.dragStartedOnCard = false;
   }
 
   private onPointerLeave() {
@@ -1626,17 +1636,19 @@ class HomeFanWheel {
     }
 
     event.preventDefault();
-    if (this.isPointerDown && this.dragStartedOnCard) return;
+    if (this.isPointerDown && this.isWheelDragging) return;
 
     const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
     const unitScale =
       event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.getViewportHeight() : 1;
+    const deltaPixels = clamp(delta * unitScale, -120, 120);
     const now = performance.now();
     const deltaTime = this.lastWheelInputTime
       ? clamp((now - this.lastWheelInputTime) / 1000, 1 / 120, 0.08)
       : 1 / 60;
     this.lastWheelInputTime = now;
-    this.applyWheelInput(delta * unitScale, deltaTime);
+    if (deltaPixels !== 0) this.setHovered(null);
+    this.applyWheelInput(deltaPixels, deltaTime);
   }
 
   private scheduleResize() {

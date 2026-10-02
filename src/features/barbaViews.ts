@@ -25,9 +25,12 @@ export const barbaViews = [
     namespace: 'home',
 
     beforeLeave() {
-      destroyHomeFanWheel();
       destroyHomeVideoPlayers();
       destroyPageVideoPlayers();
+    },
+
+    afterLeave() {
+      destroyHomeFanWheel();
     },
 
     beforeEnter({ next }: Pick<ViewData, 'next'>) {
