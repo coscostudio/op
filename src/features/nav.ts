@@ -458,8 +458,6 @@ export const setNavDrawerOpenState = (open: boolean, keepLogoFull = false) => {
 };
 
 const applyNavVisualState = (condensed: boolean, immediate = false, skipVisibility = false) => {
-  if (activeNamespace === 'home') condensed = false;
-
   if (isDrawerOpen || keepLogoFullUntilNextPageState) condensed = false; // drawer/transition forces full logo
   const isActiveBg = condensed || isDrawerOpen;
 
@@ -501,6 +499,15 @@ const applyNavTextState = (isActiveBg = false, immediate = false, skipVisibility
 };
 
 const shouldCondense = () => {
+  if (activeNamespace === 'home') {
+    const trigger = activeContainer?.querySelector<HTMLElement>('#home-2, .home-section-2');
+    if (!trigger || !trigger.getClientRects().length) return false;
+
+    const logo = document.querySelector<HTMLElement>('.nav-unified .logo-container');
+    const threshold = logo?.getBoundingClientRect().bottom ?? remToPx(3);
+    return trigger.getBoundingClientRect().top <= threshold;
+  }
+
   if (activeNamespace === 'work') {
     const trigger = activeContainer?.querySelector<HTMLElement>(
       '.section_worklist, .Section_worklist'
@@ -554,7 +561,7 @@ const removeScrollListeners = () => {
 
 const installScrollListeners = () => {
   removeScrollListeners();
-  if (!['about', 'cases', 'work'].includes(String(activeNamespace))) return;
+  if (!['about', 'cases', 'home', 'work'].includes(String(activeNamespace))) return;
 
   window.addEventListener('scroll', requestScrollUpdate, { passive: true });
   window.addEventListener('resize', requestScrollUpdate);

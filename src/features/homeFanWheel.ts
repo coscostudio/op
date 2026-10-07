@@ -48,6 +48,12 @@ const SELECTORS = {
   activeSubtitle: '[data-activecard-target="subtitle"]',
 } as const;
 
+const FAN_LAYOUT_ATTR_SELECTOR = [
+  '[data-home-fan-layout]',
+  '[data-fan-wheel-layout]',
+  '[home-fan-layout]',
+].join(',');
+
 const CONFIG = {
   idleSpeed: 0.24,
   desktopCardWidth: 2.05,
@@ -87,6 +93,7 @@ const CONFIG = {
 };
 
 type FanState = 'IDLE_SPIN' | 'HOVER' | 'FEATURED_SLIDER';
+type FanLayoutMode = 'locked' | 'section';
 
 type FanItem = {
   id: string;
@@ -186,6 +193,86 @@ const getFanRoots = (root: ParentNode | Document = document) => {
       queryElementWithFallback(element, SELECTORS.list)
   );
 };
+
+const normalizeFanLayoutMode = (value: string | null | undefined): FanLayoutMode | null => {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (
+    [
+      'section',
+      'scroll',
+      'scrollable',
+      'page',
+      'multi',
+      'multi-section',
+      'option-2',
+      'v2',
+    ].includes(normalized)
+  ) {
+    return 'section';
+  }
+
+  if (
+    ['locked', 'fixed', 'fullscreen', 'full-screen', 'fan-only', 'option-1', 'v1'].includes(
+      normalized
+    )
+  ) {
+    return 'locked';
+  }
+
+  return null;
+};
+
+const getExplicitFanLayoutMode = (root: HTMLElement): FanLayoutMode | null => {
+  const source =
+    root.closest<HTMLElement>(FAN_LAYOUT_ATTR_SELECTOR) ??
+    root.closest<HTMLElement>('.home-main') ??
+    root;
+
+  return (
+    normalizeFanLayoutMode(source.getAttribute('data-home-fan-layout')) ??
+    normalizeFanLayoutMode(source.getAttribute('data-fan-wheel-layout')) ??
+    normalizeFanLayoutMode(source.getAttribute('home-fan-layout'))
+  );
+};
+
+const getDirectChildWithin = (element: HTMLElement, ancestor: HTMLElement) => {
+  let current: HTMLElement | null = element;
+
+  while (current?.parentElement && current.parentElement !== ancestor) {
+    current = current.parentElement;
+  }
+
+  return current?.parentElement === ancestor ? current : null;
+};
+
+const isRenderableFollowupElement = (element: Element) => {
+  if (!(element instanceof HTMLElement)) return false;
+  if (element.matches('script, style, template, link, meta, noscript, [hidden]')) return false;
+
+  const style = window.getComputedStyle(element);
+  return style.display !== 'none' && style.visibility !== 'hidden';
+};
+
+const hasHomeContentAfterFan = (root: HTMLElement) => {
+  const homeMain = root.closest<HTMLElement>('.home-main');
+  if (!homeMain) return false;
+
+  const homeSection = getDirectChildWithin(root, homeMain);
+  if (!homeSection) return false;
+
+  let sibling = homeSection.nextElementSibling;
+  while (sibling) {
+    if (isRenderableFollowupElement(sibling)) return true;
+    sibling = sibling.nextElementSibling;
+  }
+
+  return false;
+};
+
+const resolveFanLayoutMode = (root: HTMLElement): FanLayoutMode =>
+  getExplicitFanLayoutMode(root) ?? (hasHomeContentAfterFan(root) ? 'section' : 'locked');
 
 const getHrefFromElement = (element: Element | null) => {
   if (!(element instanceof HTMLAnchorElement)) return '';
@@ -329,19 +416,41 @@ const injectFanStyles = () => {
   style.id = FAN_STYLE_ID;
   style.textContent = `
     .home-fan-wheel {
+      position: relative !important;
+      width: 100%;
+      height: 100svh;
+      min-height: 100svh;
+      overflow: hidden !important;
+      touch-action: pan-y;
+    }
+
+    .home-fan-wheel.home-fan-wheel--locked {
       position: fixed !important;
       inset: 0;
       width: 100vw;
-      height: 100dvh;
+      height: 100svh;
       min-height: 0;
-      overflow: hidden !important;
-      touch-action: none;
+    }
+
+    .home-fan-wheel.home-fan-wheel--section {
+      touch-action: pan-y;
+    }
+
+    .home-fan-wheel a[href^='#'],
+    .home-fan-wheel .activecard-details {
+      position: relative;
+      z-index: 2;
     }
 
     .home-main.home-fan-wheel-home {
-      height: 100dvh;
+      height: 100svh;
       min-height: 0;
       overflow: hidden;
+    }
+
+    .home-main.home-fan-wheel-page {
+      min-height: 100svh;
+      overflow: visible;
     }
 
     .home-fan-wheel .loop-slider-track,
@@ -381,6 +490,15 @@ const injectFanStyles = () => {
       transition: opacity 0.45s ease;
       cursor: auto;
       user-select: none;
+    }
+
+    .home-fan-wheel__interaction {
+      position: absolute;
+      z-index: 2;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: inherit;
     }
 
     .home-fan-wheel.is-ready .home-fan-wheel__stage {
@@ -471,7 +589,9 @@ const getWebGLAvailable = () => {
 class HomeFanWheel {
   private readonly root: HTMLElement;
   private readonly items: FanItem[];
+  private readonly layoutMode: FanLayoutMode;
   private readonly stage: HTMLDivElement;
+  private readonly interaction: HTMLDivElement;
   private readonly scene: Scene;
   private readonly camera: PerspectiveCamera;
   private readonly renderer: WebGLRenderer;
@@ -532,6 +652,7 @@ class HomeFanWheel {
 
     this.root = root;
     this.items = collectFanItems(root);
+    this.layoutMode = resolveFanLayoutMode(root);
     this.detailsScope = this.root.closest<HTMLElement>('.home-main') ?? document;
     this.activeDetailsElement = this.detailsScope.querySelector<HTMLElement>(SELECTORS.activeLink);
     this.hadDetailsMarker = Boolean(
@@ -544,6 +665,9 @@ class HomeFanWheel {
     this.stage.className = 'home-fan-wheel__stage';
     this.stage.tabIndex = 0;
     this.stage.setAttribute('aria-label', 'Featured project fan wheel');
+    this.interaction = document.createElement('div');
+    this.interaction.className = 'home-fan-wheel__interaction';
+    this.interaction.setAttribute('aria-hidden', 'true');
 
     this.scene = new Scene();
     this.scene.background = null;
@@ -564,6 +688,7 @@ class HomeFanWheel {
 
     this.stage.appendChild(this.renderer.domElement);
     this.root.appendChild(this.stage);
+    this.stage.appendChild(this.interaction);
 
     this.captureLayoutStyles();
     this.buildCards();
@@ -572,6 +697,7 @@ class HomeFanWheel {
     this.updateRadialBaseTransforms();
     this.applyRadialTransforms(1);
     this.updateActiveFromFront(true);
+    this.updateInteractionBounds();
   }
 
   public init() {
@@ -579,7 +705,10 @@ class HomeFanWheel {
 
     this.activeDetailsElement?.classList.add('home-fan-wheel-details');
     this.setFeaturedDetailsVisible(false);
-    this.root.classList.add('home-fan-wheel');
+    this.root.classList.add(
+      'home-fan-wheel',
+      this.layoutMode === 'locked' ? 'home-fan-wheel--locked' : 'home-fan-wheel--section'
+    );
     this.root.dataset.homeFanWheel = 'ready';
     queryElementWithFallback<HTMLElement>(this.root, SELECTORS.track)?.setAttribute(
       'aria-hidden',
@@ -623,7 +752,13 @@ class HomeFanWheel {
     this.stage.remove();
     this.restoreLayoutStyles();
 
-    this.root.classList.remove('home-fan-wheel', 'is-ready', 'is-featured');
+    this.root.classList.remove(
+      'home-fan-wheel',
+      'home-fan-wheel--locked',
+      'home-fan-wheel--section',
+      'is-ready',
+      'is-featured'
+    );
     this.root.removeAttribute('data-home-fan-wheel');
     queryElementWithFallback<HTMLElement>(this.root, SELECTORS.track)?.removeAttribute(
       'aria-hidden'
@@ -650,7 +785,9 @@ class HomeFanWheel {
       });
     });
 
-    homeMain?.classList.add('home-fan-wheel-home');
+    homeMain?.classList.add(
+      this.layoutMode === 'locked' ? 'home-fan-wheel-home' : 'home-fan-wheel-page'
+    );
   }
 
   private restoreLayoutStyles() {
@@ -661,6 +798,7 @@ class HomeFanWheel {
       snapshot.element.style.overflow = snapshot.overflow;
       snapshot.element.style.position = snapshot.position;
       snapshot.element.classList.remove('home-fan-wheel-home');
+      snapshot.element.classList.remove('home-fan-wheel-page');
     });
     this.styleSnapshots.length = 0;
   }
@@ -1096,6 +1234,7 @@ class HomeFanWheel {
   private animate(dt: number) {
     if (this.isTransitioning) {
       this.updateVideoPlayback();
+      this.updateInteractionBounds();
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -1103,6 +1242,7 @@ class HomeFanWheel {
     if (this.state === 'FEATURED_SLIDER') {
       this.updateFeaturedPosition(dt);
       this.updateVideoPlayback();
+      this.updateInteractionBounds();
       this.renderer.render(this.scene, this.camera);
       return;
     }
@@ -1130,7 +1270,67 @@ class HomeFanWheel {
     this.applyRadialTransforms(0.16);
     this.updateActiveFromFront(false);
     this.updateVideoPlayback();
+    this.updateInteractionBounds();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  private updateInteractionBounds() {
+    const rect = this.stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    this.camera.updateMatrixWorld(true);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    const point = new Vector3();
+
+    this.bindings.forEach(({ mesh, material }) => {
+      if (!mesh.visible || material.opacity <= 0.01) return;
+
+      mesh.updateMatrixWorld(true);
+      for (const x of [-0.5, 0.5]) {
+        for (const y of [-0.5, 0.5]) {
+          point.set(x, y, 0);
+          mesh.localToWorld(point).project(this.camera);
+          if (point.z < -1 || point.z > 1) continue;
+
+          const screenX = ((point.x + 1) / 2) * rect.width;
+          const screenY = ((1 - point.y) / 2) * rect.height;
+          minX = Math.min(minX, screenX);
+          minY = Math.min(minY, screenY);
+          maxX = Math.max(maxX, screenX);
+          maxY = Math.max(maxY, screenY);
+        }
+      }
+    });
+
+    if (!Number.isFinite(minX)) return;
+
+    const padding = clamp(Math.min(rect.width, rect.height) * 0.05, 24, 56);
+    const left = clamp(minX - padding, 0, rect.width);
+    const top = clamp(minY - padding, 0, rect.height);
+    const right = clamp(maxX + padding, 0, rect.width);
+    const bottom = clamp(maxY + padding, 0, rect.height);
+    const nextValues = {
+      left: `${Math.round(left)}px`,
+      top: `${Math.round(top)}px`,
+      width: `${Math.round(Math.max(0, right - left))}px`,
+      height: `${Math.round(Math.max(0, bottom - top))}px`,
+    };
+
+    Object.entries(nextValues).forEach(([property, value]) => {
+      if (this.interaction.style.getPropertyValue(property) !== value) {
+        this.interaction.style.setProperty(property, value);
+      }
+    });
+  }
+
+  private isWithinInteractionBounds(clientX: number, clientY: number) {
+    const rect = this.interaction.getBoundingClientRect();
+    return (
+      clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+    );
   }
 
   private updateFeaturedPosition(dt: number) {
@@ -1510,6 +1710,15 @@ class HomeFanWheel {
   }
 
   private onPointerMove(event: PointerEvent) {
+    if (!this.isPointerDown && !this.isWithinInteractionBounds(event.clientX, event.clientY)) {
+      if (this.state === 'FEATURED_SLIDER') {
+        this.updateCursor(null);
+      } else {
+        this.setHovered(null);
+      }
+      return;
+    }
+
     this.updatePointer(event);
 
     if (this.isPointerDown && this.state === 'FEATURED_SLIDER') {
@@ -1566,6 +1775,11 @@ class HomeFanWheel {
 
   private onPointerDown(event: PointerEvent) {
     if (event.button !== 0) return;
+
+    if (!this.isWithinInteractionBounds(event.clientX, event.clientY)) {
+      if (this.state === 'FEATURED_SLIDER') this.releaseFeatured();
+      return;
+    }
 
     this.stage.focus({ preventScroll: true });
     this.updatePointer(event);
@@ -1706,7 +1920,13 @@ class HomeFanWheel {
     }
   }
 
+  private shouldHandleWheelEvent(event: WheelEvent) {
+    return this.isWithinInteractionBounds(event.clientX, event.clientY);
+  }
+
   private onWheel(event: WheelEvent) {
+    if (!this.shouldHandleWheelEvent(event)) return;
+
     if (this.state === 'FEATURED_SLIDER') {
       if (this.isPointerDown || this.isTransitioning) return;
 
@@ -1824,6 +2044,7 @@ class HomeFanWheel {
 
     this.updateVideoPlayback();
 
+    this.updateInteractionBounds();
     this.renderer.render(this.scene, this.camera);
   }
 
