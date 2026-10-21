@@ -231,10 +231,7 @@ const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoContro
   let leaveTimer: number | undefined;
   let pauseTimer: number | undefined;
 
-  // Pointer events cover mouse and touch: for touch, enter fires on finger down and
-  // leave fires on lift, or on pointercancel when the gesture becomes a scroll.
-  const onEnter = (event: PointerEvent) => {
-    if (event.currentTarget) activeTargets.add(event.currentTarget);
+  const start = () => {
     window.clearTimeout(leaveTimer);
     window.clearTimeout(pauseTimer);
 
@@ -247,21 +244,47 @@ const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoContro
     playManagedVideo(controller);
   };
 
+  const stop = () => {
+    videoElement.classList.remove(FEATURED_PLAYING_CLASS);
+    window.clearTimeout(pauseTimer);
+    pauseTimer = window.setTimeout(() => pauseManagedVideo(controller), FEATURED_FADE_DURATION);
+  };
+
+  // Mouse: play while any target is hovered.
+  const onEnter = (event: PointerEvent) => {
+    if (event.pointerType !== 'mouse') return;
+    if (event.currentTarget) activeTargets.add(event.currentTarget);
+    start();
+  };
+
   const onLeave = (event: PointerEvent) => {
+    if (event.pointerType !== 'mouse') return;
     if (event.currentTarget) activeTargets.delete(event.currentTarget);
     window.clearTimeout(leaveTimer);
     leaveTimer = window.setTimeout(() => {
-      if (activeTargets.size) return;
-
-      videoElement.classList.remove(FEATURED_PLAYING_CLASS);
-      pauseTimer = window.setTimeout(() => pauseManagedVideo(controller), FEATURED_FADE_DURATION);
+      if (!activeTargets.size) stop();
     }, FEATURED_HOVER_LEAVE_DELAY);
+  };
+
+  // Touch/pen: pointerleave on lift is unreliable across mobile browsers, so mirror sticky
+  // :hover instead — a touch on a target plays, a touch anywhere else stops.
+  const onDocumentPointerDown = (event: PointerEvent) => {
+    if (event.pointerType === 'mouse') return;
+
+    const isOnTarget = targets.some((el) => el.contains(event.target as Node));
+    if (isOnTarget) {
+      start();
+      return;
+    }
+
+    if (controller.shouldPlayWhenReady) stop();
   };
 
   targets.forEach((el) => {
     el.addEventListener('pointerenter', onEnter);
     el.addEventListener('pointerleave', onLeave);
   });
+  document.addEventListener('pointerdown', onDocumentPointerDown, { capture: true, passive: true });
 
   featuredHoverCleanups.push(() => {
     window.clearTimeout(leaveTimer);
@@ -271,6 +294,7 @@ const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoContro
       el.removeEventListener('pointerenter', onEnter);
       el.removeEventListener('pointerleave', onLeave);
     });
+    document.removeEventListener('pointerdown', onDocumentPointerDown, { capture: true });
   });
 };
 
