@@ -24,6 +24,7 @@ import {
 
 const FAN_STYLE_ID = 'home-fan-wheel-styles';
 const MOBILE_BREAKPOINT = 479;
+const COMPACT_BREAKPOINT = 767;
 const TWO_PI = Math.PI * 2;
 const HALF_PI = Math.PI / 2;
 
@@ -61,7 +62,11 @@ const CONFIG = {
   desktopAspect: 4 / 3,
   mobileAspect: 3 / 4,
   desktopInnerAxisGap: 0.8,
-  mobileInnerAxisGap: 0.45,
+  mobileInnerAxisGap: 0.38,
+  // Wheel camera direction (y = height, z = distance); higher y = more top-down.
+  wheelCameraElevationY: 5.2,
+  compactWheelCameraElevationY: 7.2,
+  wheelCameraElevationZ: 10,
   hoverYOffset: 0.24,
   hoverSlowdownFactor: 0.05,
   featuredZFront: 2.15,
@@ -77,6 +82,17 @@ const CONFIG = {
   desktopWheelFitPadding: 0.92,
   mobileWheelFitPadding: 0.94,
   mobileLandscapeWheelFitPadding: 0.9,
+  // Max projected half-width (NDC) of the spinning wheel before the camera pulls back.
+  wheelMaxProjectedX: 0.96,
+  // Below COMPACT_BREAKPOINT the wheel fills this projected half-height (NDC) and may
+  // bleed off the sides up to compactWheelMaxProjectedX.
+  compactWheelTargetHalfHeight: 0.68,
+  compactWheelMaxProjectedX: 1.24,
+  // On short viewports the wheel still spans at least this projected half-width (NDC),
+  // bleeding off the top/bottom up to wheelMaxProjectedHalfHeight.
+  wheelMinProjectedHalfWidth: 0.58,
+  wheelMaxProjectedHalfHeight: 1.04,
+  wheelFitSamples: 48,
   maxPixelRatio: 1.8,
   wheelRotateSpeed: 0.0008,
   maxSpinSpeed: 1.35,
@@ -803,10 +819,14 @@ class HomeFanWheel {
     this.styleSnapshots.length = 0;
   }
 
+  private isCompact() {
+    return this.getViewportWidth() <= COMPACT_BREAKPOINT;
+  }
+
   private getCardDimensions() {
-    const mobile = this.getViewportWidth() <= MOBILE_BREAKPOINT;
-    const width = mobile ? CONFIG.mobileCardWidth : CONFIG.desktopCardWidth;
-    const aspect = mobile ? CONFIG.mobileAspect : CONFIG.desktopAspect;
+    const compact = this.isCompact();
+    const width = compact ? CONFIG.mobileCardWidth : CONFIG.desktopCardWidth;
+    const aspect = compact ? CONFIG.mobileAspect : CONFIG.desktopAspect;
     return { width, height: width / aspect };
   }
 
@@ -827,8 +847,7 @@ class HomeFanWheel {
   }
 
   private getRadius() {
-    const mobile = this.getViewportWidth() <= MOBILE_BREAKPOINT;
-    const innerGap = mobile ? CONFIG.mobileInnerAxisGap : CONFIG.desktopInnerAxisGap;
+    const innerGap = this.isCompact() ? CONFIG.mobileInnerAxisGap : CONFIG.desktopInnerAxisGap;
     return innerGap + this.getCardWidth() / 2;
   }
 
@@ -868,7 +887,11 @@ class HomeFanWheel {
           : CONFIG.mobileWheelFitPadding
         : CONFIG.desktopWheelFitPadding;
     const distance = fitDistance * fitPadding;
-    const direction = new Vector3(0, 4, 10).normalize();
+    const direction = new Vector3(
+      0,
+      this.isCompact() ? CONFIG.compactWheelCameraElevationY : CONFIG.wheelCameraElevationY,
+      CONFIG.wheelCameraElevationZ
+    ).normalize();
 
     return new Vector3(direction.x * distance, direction.y * distance, direction.z * distance);
   }
@@ -884,15 +907,37 @@ class HomeFanWheel {
     const elevationCosine = basePosition.z / basePosition.length();
     let targetY = 0;
 
+    const compact = this.isCompact();
+
     // Recenter the projected wheel bounds; the near half is enlarged by perspective.
-    for (let pass = 0; pass < 3; pass += 1) {
+    // Desktop: pull the camera back if any rotation of the wheel would clip the sides.
+    // Compact: dolly to fill the viewport height, letting cards bleed off the sides.
+    for (let pass = 0; pass < 6; pass += 1) {
       this.camera.position.set(basePosition.x, basePosition.y + targetY, basePosition.z);
       this.camera.lookAt(0, targetY, 0);
       this.camera.updateMatrixWorld(true);
 
       let minY = Infinity;
       let maxY = -Infinity;
+      let maxAbsX = 0;
+      let sampledMinY = Infinity;
+      let sampledMaxY = -Infinity;
       const point = new Vector3();
+
+      for (let sample = 0; sample < CONFIG.wheelFitSamples; sample += 1) {
+        const theta = (TWO_PI * sample) / CONFIG.wheelFitSamples;
+
+        for (const localX of [-width / 2, width / 2]) {
+          for (const localY of [-height / 2, height / 2]) {
+            point
+              .set((radius + localX) * Math.cos(theta), localY, (radius + localX) * Math.sin(theta))
+              .project(this.camera);
+            maxAbsX = Math.max(maxAbsX, Math.abs(point.x));
+            sampledMinY = Math.min(sampledMinY, point.y);
+            sampledMaxY = Math.max(sampledMaxY, point.y);
+          }
+        }
+      }
 
       for (let index = 0; index < count; index += 1) {
         const theta = (TWO_PI * index) / count + this.baseAngle;
@@ -915,6 +960,20 @@ class HomeFanWheel {
       targetY +=
         (projectedCenterY * basePosition.length() * halfFovTangent) /
         Math.max(elevationCosine, 0.1);
+
+      // Scale < 1 dollies in (bigger wheel). Take the larger of the height-driven and
+      // minimum-width framings, then pull back only as far as the bleed limits require.
+      const sampledHalfHeight = (sampledMaxY - sampledMinY) / 2;
+      const heightScale = compact ? sampledHalfHeight / CONFIG.compactWheelTargetHalfHeight : 1;
+      const minWidthScale = maxAbsX / CONFIG.wheelMinProjectedHalfWidth;
+      const distanceScale = Math.max(
+        Math.min(heightScale, minWidthScale),
+        maxAbsX / (compact ? CONFIG.compactWheelMaxProjectedX : CONFIG.wheelMaxProjectedX),
+        sampledHalfHeight / CONFIG.wheelMaxProjectedHalfHeight
+      );
+      if (Number.isFinite(distanceScale) && distanceScale > 0) {
+        basePosition.multiplyScalar(distanceScale);
+      }
     }
 
     this.camera.position.copy(originalPosition);
