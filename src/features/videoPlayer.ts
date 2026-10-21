@@ -226,10 +226,15 @@ const bindFeaturedVideoReveal = (controller: ManagedVideoController) => {
 const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoController) => {
   const targets = Array.from(card.querySelectorAll<HTMLElement>(FEATURED_HOVER_TARGETS));
   const { videoElement } = controller;
+  // Tracked manually rather than via :hover — touch browsers leave :hover stuck after a tap.
+  const activeTargets = new Set<EventTarget>();
   let leaveTimer: number | undefined;
   let pauseTimer: number | undefined;
 
-  const onEnter = () => {
+  // Pointer events cover mouse and touch: for touch, enter fires on finger down and
+  // leave fires on lift, or on pointercancel when the gesture becomes a scroll.
+  const onEnter = (event: PointerEvent) => {
+    if (event.currentTarget) activeTargets.add(event.currentTarget);
     window.clearTimeout(leaveTimer);
     window.clearTimeout(pauseTimer);
 
@@ -242,10 +247,11 @@ const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoContro
     playManagedVideo(controller);
   };
 
-  const onLeave = () => {
+  const onLeave = (event: PointerEvent) => {
+    if (event.currentTarget) activeTargets.delete(event.currentTarget);
     window.clearTimeout(leaveTimer);
     leaveTimer = window.setTimeout(() => {
-      if (targets.some((el) => el.matches(':hover'))) return;
+      if (activeTargets.size) return;
 
       videoElement.classList.remove(FEATURED_PLAYING_CLASS);
       pauseTimer = window.setTimeout(() => pauseManagedVideo(controller), FEATURED_FADE_DURATION);
@@ -253,16 +259,17 @@ const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoContro
   };
 
   targets.forEach((el) => {
-    el.addEventListener('mouseenter', onEnter);
-    el.addEventListener('mouseleave', onLeave);
+    el.addEventListener('pointerenter', onEnter);
+    el.addEventListener('pointerleave', onLeave);
   });
 
   featuredHoverCleanups.push(() => {
     window.clearTimeout(leaveTimer);
     window.clearTimeout(pauseTimer);
+    activeTargets.clear();
     targets.forEach((el) => {
-      el.removeEventListener('mouseenter', onEnter);
-      el.removeEventListener('mouseleave', onLeave);
+      el.removeEventListener('pointerenter', onEnter);
+      el.removeEventListener('pointerleave', onLeave);
     });
   });
 };
@@ -271,7 +278,6 @@ export const initPageVideoPlayers = (root: ParentNode = document) => {
   destroyPageVideoPlayers();
 
   const videoElements = root.querySelectorAll<HTMLVideoElement>('video');
-  const canHover = window.matchMedia('(hover: hover)').matches;
 
   videoElements.forEach((videoElement) => {
     if (isHomeManagedVideo(videoElement) || isWorkManagedVideo(videoElement)) return;
@@ -281,10 +287,9 @@ export const initPageVideoPlayers = (root: ParentNode = document) => {
 
     const controller = setupVideo(videoElement, videoUrl, managedPageVideos);
 
-    // Touch devices have no hover, so featured cards keep autoplaying there.
     const featuredCard = videoElement.closest<HTMLElement>(FEATURED_CARD_SELECTOR);
-    if (featuredCard) bindFeaturedVideoReveal(controller);
-    if (featuredCard && canHover) {
+    if (featuredCard) {
+      bindFeaturedVideoReveal(controller);
       bindFeaturedCardHover(featuredCard, controller);
       return;
     }
