@@ -16,6 +16,10 @@ const FEATURED_CARD_SELECTOR = '.top-projects-card';
 const FEATURED_HOVER_TARGETS = '.top-projects-media, .featured-card-heading, .category-bubble';
 // Grace period so moving between sibling targets (across gaps) doesn't restart the video.
 const FEATURED_HOVER_LEAVE_DELAY = 120;
+// Video is hidden (thumbnail shows) until this class is set. Keep FADE in sync with the
+// opacity transition in the .global-styles embed so pause/rewind happens after fade-out.
+const FEATURED_PLAYING_CLASS = 'is-playing';
+const FEATURED_FADE_DURATION = 250;
 let featuredHoverCleanups: Array<() => void> = [];
 
 const getVideoUrl = (videoElement: HTMLVideoElement) =>
@@ -203,13 +207,38 @@ export const destroyHomeVideoPlayers = () => {
   destroyManagedVideos(managedHomeVideos);
 };
 
+// Reveal the video only once frames are rendering, so the thumbnail never flashes to black.
+const bindFeaturedVideoReveal = (controller: ManagedVideoController) => {
+  const { videoElement } = controller;
+
+  const onPlaying = () => {
+    if (controller.shouldPlayWhenReady) videoElement.classList.add(FEATURED_PLAYING_CLASS);
+  };
+
+  videoElement.addEventListener('playing', onPlaying);
+
+  featuredHoverCleanups.push(() => {
+    videoElement.removeEventListener('playing', onPlaying);
+    videoElement.classList.remove(FEATURED_PLAYING_CLASS);
+  });
+};
+
 const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoController) => {
   const targets = Array.from(card.querySelectorAll<HTMLElement>(FEATURED_HOVER_TARGETS));
+  const { videoElement } = controller;
   let leaveTimer: number | undefined;
+  let pauseTimer: number | undefined;
 
   const onEnter = () => {
     window.clearTimeout(leaveTimer);
-    if (controller.shouldPlayWhenReady) return;
+    window.clearTimeout(pauseTimer);
+
+    // Re-entered during fade-out — video is still playing, just fade it back in.
+    if (controller.shouldPlayWhenReady) {
+      if (!videoElement.paused) videoElement.classList.add(FEATURED_PLAYING_CLASS);
+      return;
+    }
+
     playManagedVideo(controller);
   };
 
@@ -217,7 +246,9 @@ const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoContro
     window.clearTimeout(leaveTimer);
     leaveTimer = window.setTimeout(() => {
       if (targets.some((el) => el.matches(':hover'))) return;
-      pauseManagedVideo(controller);
+
+      videoElement.classList.remove(FEATURED_PLAYING_CLASS);
+      pauseTimer = window.setTimeout(() => pauseManagedVideo(controller), FEATURED_FADE_DURATION);
     }, FEATURED_HOVER_LEAVE_DELAY);
   };
 
@@ -228,6 +259,7 @@ const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoContro
 
   featuredHoverCleanups.push(() => {
     window.clearTimeout(leaveTimer);
+    window.clearTimeout(pauseTimer);
     targets.forEach((el) => {
       el.removeEventListener('mouseenter', onEnter);
       el.removeEventListener('mouseleave', onLeave);
@@ -251,6 +283,7 @@ export const initPageVideoPlayers = (root: ParentNode = document) => {
 
     // Touch devices have no hover, so featured cards keep autoplaying there.
     const featuredCard = videoElement.closest<HTMLElement>(FEATURED_CARD_SELECTOR);
+    if (featuredCard) bindFeaturedVideoReveal(controller);
     if (featuredCard && canHover) {
       bindFeaturedCardHover(featuredCard, controller);
       return;
