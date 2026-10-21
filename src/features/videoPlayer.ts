@@ -11,6 +11,13 @@ type ManagedVideoController = {
 const managedHomeVideos = new Map<HTMLVideoElement, ManagedVideoController>();
 const managedPageVideos = new Map<HTMLVideoElement, ManagedVideoController>();
 
+// Featured project cards only play while their media, heading, or a category bubble is hovered.
+const FEATURED_CARD_SELECTOR = '.top-projects-card';
+const FEATURED_HOVER_TARGETS = '.top-projects-media, .featured-card-heading, .category-bubble';
+// Grace period so moving between sibling targets (across gaps) doesn't restart the video.
+const FEATURED_HOVER_LEAVE_DELAY = 120;
+let featuredHoverCleanups: Array<() => void> = [];
+
 const getVideoUrl = (videoElement: HTMLVideoElement) =>
   videoElement.getAttribute('data-src') || videoElement.currentSrc || videoElement.src || '';
 
@@ -196,10 +203,43 @@ export const destroyHomeVideoPlayers = () => {
   destroyManagedVideos(managedHomeVideos);
 };
 
+const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoController) => {
+  const targets = Array.from(card.querySelectorAll<HTMLElement>(FEATURED_HOVER_TARGETS));
+  let leaveTimer: number | undefined;
+
+  const onEnter = () => {
+    window.clearTimeout(leaveTimer);
+    if (controller.shouldPlayWhenReady) return;
+    playManagedVideo(controller);
+  };
+
+  const onLeave = () => {
+    window.clearTimeout(leaveTimer);
+    leaveTimer = window.setTimeout(() => {
+      if (targets.some((el) => el.matches(':hover'))) return;
+      pauseManagedVideo(controller);
+    }, FEATURED_HOVER_LEAVE_DELAY);
+  };
+
+  targets.forEach((el) => {
+    el.addEventListener('mouseenter', onEnter);
+    el.addEventListener('mouseleave', onLeave);
+  });
+
+  featuredHoverCleanups.push(() => {
+    window.clearTimeout(leaveTimer);
+    targets.forEach((el) => {
+      el.removeEventListener('mouseenter', onEnter);
+      el.removeEventListener('mouseleave', onLeave);
+    });
+  });
+};
+
 export const initPageVideoPlayers = (root: ParentNode = document) => {
-  destroyManagedVideos(managedPageVideos);
+  destroyPageVideoPlayers();
 
   const videoElements = root.querySelectorAll<HTMLVideoElement>('video');
+  const canHover = window.matchMedia('(hover: hover)').matches;
 
   videoElements.forEach((videoElement) => {
     if (isHomeManagedVideo(videoElement) || isWorkManagedVideo(videoElement)) return;
@@ -208,10 +248,20 @@ export const initPageVideoPlayers = (root: ParentNode = document) => {
     if (!videoUrl) return;
 
     const controller = setupVideo(videoElement, videoUrl, managedPageVideos);
+
+    // Touch devices have no hover, so featured cards keep autoplaying there.
+    const featuredCard = videoElement.closest<HTMLElement>(FEATURED_CARD_SELECTOR);
+    if (featuredCard && canHover) {
+      bindFeaturedCardHover(featuredCard, controller);
+      return;
+    }
+
     playManagedVideo(controller);
   });
 };
 
 export const destroyPageVideoPlayers = () => {
+  featuredHoverCleanups.forEach((cleanup) => cleanup());
+  featuredHoverCleanups = [];
   destroyManagedVideos(managedPageVideos);
 };
