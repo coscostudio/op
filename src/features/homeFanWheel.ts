@@ -106,9 +106,26 @@ const CONFIG = {
   maxDragAngleStep: 0.14,
   featuredCameraY: 0,
   featuredCameraZ: 8.2,
+
+  // ── Scroll vs. spin (section layout only) ─────────────────────────────────
+  // Scrolling down always moves the page. Scrolling up at the top, left or right spins
+  // the wheel. Once the page is scrolled, the wheel never intercepts scrolling.
+  // window.scrollY at or below this counts as "at the top" (absorbs iOS rubber-band noise).
+  scrollTopThreshold: 8,
+  // Wheel events closer together than this belong to one gesture (incl. trackpad momentum).
+  wheelGestureGapMs: 180,
 };
 
 type FanState = 'IDLE_SPIN' | 'HOVER' | 'FEATURED_SLIDER';
+type WheelGestureMode = 'page' | 'capture';
+
+type TouchGesture = {
+  // pending: no movement yet; spin: wheel owns the touch; native: browser scrolls.
+  mode: 'pending' | 'spin' | 'native';
+  startX: number;
+  startY: number;
+};
+
 type FanLayoutMode = 'locked' | 'section';
 
 type FanItem = {
@@ -517,6 +534,12 @@ const injectFanStyles = () => {
       cursor: inherit;
     }
 
+    /* Section layout: native vertical scrolling by default; the wheel claims a touch only
+       when its first move is sideways or (at the top) downward — see onTouchMove. */
+    .home-fan-wheel--section .home-fan-wheel__interaction {
+      touch-action: pan-y;
+    }
+
     .home-fan-wheel.is-ready .home-fan-wheel__stage {
       opacity: 1;
     }
@@ -654,14 +677,23 @@ class HomeFanWheel {
   private lastPointerX = 0;
   private lastPointerTime = 0;
   private lastPointerAngle: number | null = null;
+  private activePointerId: number | null = null;
+
+  // Scroll vs. spin state (section layout only).
+  private readonly isSectionLayout: boolean;
+  private lastWheelEventTime = -Infinity;
+  private wheelGestureMode: WheelGestureMode | null = null;
+  private touchGesture: TouchGesture | null = null;
 
   private readonly handlePointerMove = this.onPointerMove.bind(this);
   private readonly handlePointerDown = this.onPointerDown.bind(this);
   private readonly handlePointerUp = this.onPointerUp.bind(this);
+  private readonly handlePointerCancel = this.onPointerCancel.bind(this);
   private readonly handlePointerLeave = this.onPointerLeave.bind(this);
   private readonly handleWheel = this.onWheel.bind(this);
   private readonly handleResize = this.scheduleResize.bind(this);
   private readonly handleKeydown = this.onKeydown.bind(this);
+  private readonly handleTouchMove = this.onTouchMove.bind(this);
 
   constructor(root: HTMLElement) {
     injectFanStyles();
@@ -669,6 +701,7 @@ class HomeFanWheel {
     this.root = root;
     this.items = collectFanItems(root);
     this.layoutMode = resolveFanLayoutMode(root);
+    this.isSectionLayout = this.layoutMode === 'section';
     this.detailsScope = this.root.closest<HTMLElement>('.home-main') ?? document;
     this.activeDetailsElement = this.detailsScope.querySelector<HTMLElement>(SELECTORS.activeLink);
     this.hadDetailsMarker = Boolean(
@@ -761,6 +794,7 @@ class HomeFanWheel {
     this.resizeObserver?.disconnect();
     this.layoutTween?.kill();
     this.cameraTween?.kill();
+    this.touchGesture = null;
     this.removeEvents();
     this.bindings.forEach((binding) => this.disposeBinding(binding));
     this.bindings.length = 0;
@@ -1218,6 +1252,8 @@ class HomeFanWheel {
     window.addEventListener('wheel', this.handleWheel, { passive: false });
     this.stage.addEventListener('keydown', this.handleKeydown);
     window.addEventListener('pointerup', this.handlePointerUp);
+    window.addEventListener('pointercancel', this.handlePointerCancel);
+    this.interaction.addEventListener('touchmove', this.handleTouchMove, { passive: false });
     window.addEventListener('resize', this.handleResize);
 
     if (typeof ResizeObserver !== 'undefined') {
@@ -1234,6 +1270,8 @@ class HomeFanWheel {
     window.removeEventListener('wheel', this.handleWheel);
     this.stage.removeEventListener('keydown', this.handleKeydown);
     window.removeEventListener('pointerup', this.handlePointerUp);
+    window.removeEventListener('pointercancel', this.handlePointerCancel);
+    this.interaction.removeEventListener('touchmove', this.handleTouchMove);
     window.removeEventListener('resize', this.handleResize);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -1769,6 +1807,14 @@ class HomeFanWheel {
   }
 
   private onPointerMove(event: PointerEvent) {
+    if (this.isPointerDown && event.pointerId !== this.activePointerId) return;
+
+    if (this.touchGesture) {
+      this.updatePointer(event);
+      this.updateTouchGesture(event);
+      return;
+    }
+
     if (!this.isPointerDown && !this.isWithinInteractionBounds(event.clientX, event.clientY)) {
       if (this.state === 'FEATURED_SLIDER') {
         this.updateCursor(null);
@@ -1834,12 +1880,25 @@ class HomeFanWheel {
 
   private onPointerDown(event: PointerEvent) {
     if (event.button !== 0) return;
+    // Ignore extra fingers while one pointer is already driving the wheel.
+    if (this.isPointerDown && event.pointerId !== this.activePointerId) return;
 
     if (!this.isWithinInteractionBounds(event.clientX, event.clientY)) {
       if (this.state === 'FEATURED_SLIDER') this.releaseFeatured();
       return;
     }
 
+    if (
+      this.isSectionLayout &&
+      event.pointerType === 'touch' &&
+      this.state !== 'FEATURED_SLIDER' &&
+      !this.isTransitioning
+    ) {
+      this.beginTouchGesture(event);
+      return;
+    }
+
+    this.activePointerId = event.pointerId;
     this.stage.focus({ preventScroll: true });
     this.updatePointer(event);
     this.isPointerDown = true;
@@ -1877,7 +1936,10 @@ class HomeFanWheel {
   }
 
   private onPointerUp(event: PointerEvent) {
-    if (!this.isPointerDown) return;
+    if (!this.isPointerDown || event.pointerId !== this.activePointerId) return;
+
+    this.touchGesture = null;
+    this.activePointerId = null;
 
     const wasWheelDrag = this.isWheelDragging;
     if (wasWheelDrag) this.updateWheelPointerInput(event);
@@ -1979,40 +2041,119 @@ class HomeFanWheel {
     }
   }
 
+  private onPointerCancel(event: PointerEvent) {
+    if (!this.isPointerDown || event.pointerId !== this.activePointerId) return;
+
+    // Fires when the browser takes over a pan (touch-action: pan-y) or the OS steals the touch.
+    const wasFeaturedDrag = this.isFeaturedDragging;
+    this.touchGesture = null;
+    this.activePointerId = null;
+    this.isPointerDown = false;
+    this.isWheelDragging = false;
+    this.isFeaturedDragging = false;
+    this.lastPointerAngle = null;
+    this.stage.classList.remove('is-dragging');
+
+    if (this.state === 'FEATURED_SLIDER') {
+      if (wasFeaturedDrag) {
+        this.featuredTargetPosition = clamp(
+          Math.round(this.featuredPosition),
+          0,
+          Math.max(0, this.bindings.length - 1)
+        );
+        this.featuredDragVelocity = 0;
+      }
+      this.updateCursor(null);
+    } else {
+      this.setHovered(null);
+    }
+  }
+
+  // ── Scroll vs. spin ────────────────────────────────────────────────────────
+  // Section layout rules: scrolling down always moves the page. Scrolling up (only at the
+  // top of the page), left or right spins the wheel, as do circular drags.
+
+  private isPageScrolled() {
+    return window.scrollY > CONFIG.scrollTopThreshold;
+  }
+
+  // ── Wheel ──────────────────────────────────────────────────────────────────
+
   private shouldHandleWheelEvent(event: WheelEvent) {
     return this.isWithinInteractionBounds(event.clientX, event.clientY);
   }
 
+  private getWheelDelta(event: WheelEvent) {
+    const isVertical = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
+    const delta = isVertical ? event.deltaY : event.deltaX;
+    const unitScale =
+      event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.getViewportHeight() : 1;
+    return { isVertical, deltaPixels: clamp(delta * unitScale, -120, 120) };
+  }
+
   private onWheel(event: WheelEvent) {
+    if (!this.isSectionLayout) {
+      this.onWheelLocked(event);
+      return;
+    }
+
+    const now = performance.now();
+    if (now - this.lastWheelEventTime > CONFIG.wheelGestureGapMs) {
+      this.wheelGestureMode = this.resolveWheelGestureMode(event);
+    }
+    this.lastWheelEventTime = now;
+
+    // Mode is locked per gesture, so trackpad momentum from a page scroll that carries
+    // back to the top keeps scrolling the page instead of suddenly spinning the wheel.
+    if (this.wheelGestureMode !== 'capture') return;
+
+    if (this.state === 'FEATURED_SLIDER') {
+      // Horizontal only: vertical scrolling always moves the page.
+      this.handleFeaturedWheel(event, true);
+      return;
+    }
+
+    if (this.isPageScrolled()) return;
+
+    const { isVertical, deltaPixels } = this.getWheelDelta(event);
+    // Scrolling down is never intercepted, even mid-gesture.
+    if (isVertical && deltaPixels > 0) return;
+
+    event.preventDefault();
+    if (this.isPointerDown && this.isWheelDragging) return;
+
+    const deltaTime = this.lastWheelInputTime
+      ? clamp((now - this.lastWheelInputTime) / 1000, 1 / 120, 0.08)
+      : 1 / 60;
+    this.lastWheelInputTime = now;
+    if (deltaPixels !== 0) this.setHovered(null);
+    this.applyWheelInput(deltaPixels, deltaTime);
+  }
+
+  private resolveWheelGestureMode(event: WheelEvent): WheelGestureMode {
+    if (!this.shouldHandleWheelEvent(event)) return 'page';
+
+    const { isVertical, deltaPixels } = this.getWheelDelta(event);
+    // Featured slider: a gesture that starts sideways drives the slider, anything else
+    // scrolls the page (at any scroll position).
+    if (this.state === 'FEATURED_SLIDER') return isVertical ? 'page' : 'capture';
+    if (this.isPageScrolled() || this.prefersReducedMotion) return 'page';
+    return isVertical && deltaPixels > 0 ? 'page' : 'capture';
+  }
+
+  /** Locked (fan-only) layout: nothing to scroll to, so the wheel keeps all input. */
+  private onWheelLocked(event: WheelEvent) {
     if (!this.shouldHandleWheelEvent(event)) return;
 
     if (this.state === 'FEATURED_SLIDER') {
-      if (this.isPointerDown || this.isTransitioning) return;
-
-      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      const unitScale =
-        event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.getViewportHeight() : 1;
-      const deltaPixels = clamp(delta * unitScale, -120, 120);
-      const nextPosition = clamp(
-        this.featuredTargetPosition + deltaPixels * CONFIG.featuredWheelSensitivity,
-        0,
-        this.bindings.length - 1
-      );
-      if (nextPosition !== this.featuredTargetPosition) {
-        event.preventDefault();
-        this.featuredTargetPosition = nextPosition;
-        this.featuredWheelIdle = CONFIG.featuredWheelSnapDelay;
-      }
+      this.handleFeaturedWheel(event);
       return;
     }
 
     event.preventDefault();
     if (this.isPointerDown && this.isWheelDragging) return;
 
-    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-    const unitScale =
-      event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.getViewportHeight() : 1;
-    const deltaPixels = clamp(delta * unitScale, -120, 120);
+    const { deltaPixels } = this.getWheelDelta(event);
     const now = performance.now();
     const deltaTime = this.lastWheelInputTime
       ? clamp((now - this.lastWheelInputTime) / 1000, 1 / 120, 0.08)
@@ -2020,6 +2161,107 @@ class HomeFanWheel {
     this.lastWheelInputTime = now;
     if (deltaPixels !== 0) this.setHovered(null);
     this.applyWheelInput(deltaPixels, deltaTime);
+  }
+
+  /**
+   * Featured slider wheel input.
+   * - `horizontalOnly` (section layout): only deltaX moves the slider. Horizontal events are
+   *   always claimed, so swiping past either end doesn't trigger browser back/forward.
+   * - Otherwise (locked layout): the dominant axis moves the slider, and the event is only
+   *   claimed when it moves the slider, so the ends release.
+   */
+  private handleFeaturedWheel(event: WheelEvent, horizontalOnly = false) {
+    let deltaPixels: number;
+    if (horizontalOnly) {
+      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+      event.preventDefault();
+      const unitScale =
+        event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.getViewportWidth() : 1;
+      deltaPixels = clamp(event.deltaX * unitScale, -120, 120);
+    } else {
+      ({ deltaPixels } = this.getWheelDelta(event));
+    }
+
+    if (this.isPointerDown || this.isTransitioning) return;
+
+    const nextPosition = clamp(
+      this.featuredTargetPosition + deltaPixels * CONFIG.featuredWheelSensitivity,
+      0,
+      this.bindings.length - 1
+    );
+    if (nextPosition !== this.featuredTargetPosition) {
+      event.preventDefault();
+      this.featuredTargetPosition = nextPosition;
+      this.featuredWheelIdle = CONFIG.featuredWheelSnapDelay;
+    }
+  }
+
+  // ── Touch ──────────────────────────────────────────────────────────────────
+  // The interaction layer is touch-action: pan-y in section layout, so the browser scrolls
+  // natively by default. The first movement of each touch decides who owns it:
+  //   finger up (scroll down), or any vertical move once scrolled → browser (native scroll)
+  //   sideways, or finger down at the top (scroll up)           → wheel (circular drag spin)
+  // Owned touches block native panning by cancelling touchmove.
+
+  private beginTouchGesture(event: PointerEvent) {
+    const now = performance.now();
+    this.stage.focus({ preventScroll: true });
+    this.updatePointer(event);
+    this.activePointerId = event.pointerId;
+    this.isPointerDown = true;
+    this.isWheelDragging = false;
+    this.isFeaturedDragging = false;
+    this.lastPointerAngle = this.getWheelPointerAngle(event);
+    this.pointerDownTime = now;
+    this.pointerDownCoords = { x: event.clientX, y: event.clientY };
+    this.lastPointerX = event.clientX;
+    this.lastPointerTime = now;
+    this.touchGesture = { mode: 'pending', startX: event.clientX, startY: event.clientY };
+
+    try {
+      this.stage.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture may be unavailable for synthetic pointer events.
+    }
+  }
+
+  /** Classifies a pending touch from its first movement. Safe to call from either event. */
+  private classifyTouchGesture(clientX: number, clientY: number) {
+    const gesture = this.touchGesture;
+    if (!gesture || gesture.mode !== 'pending') return;
+
+    const dx = clientX - gesture.startX;
+    const dy = clientY - gesture.startY;
+    if (!dx && !dy) return;
+
+    const isVertical = Math.abs(dy) >= Math.abs(dx);
+    const isNative = isVertical && (dy < 0 || this.isPageScrolled());
+    gesture.mode = isNative ? 'native' : 'spin';
+
+    if (gesture.mode === 'spin') {
+      this.isWheelDragging = true;
+      this.setHovered(null);
+      this.currentSpeed = 0;
+      this.stage.classList.add('is-dragging');
+    }
+  }
+
+  private updateTouchGesture(event: PointerEvent) {
+    this.classifyTouchGesture(event.clientX, event.clientY);
+    // Circular drag spin, catching up from the touchdown angle on the first move.
+    if (this.touchGesture?.mode === 'spin') this.updateWheelPointerInput(event);
+  }
+
+  private onTouchMove(event: TouchEvent) {
+    const gesture = this.touchGesture;
+    if (!gesture) return;
+
+    if (gesture.mode === 'pending') {
+      const touch = event.touches[0];
+      if (touch) this.classifyTouchGesture(touch.clientX, touch.clientY);
+    }
+
+    if (gesture.mode === 'spin' && event.cancelable) event.preventDefault();
   }
 
   private scheduleResize() {
