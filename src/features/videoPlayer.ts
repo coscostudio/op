@@ -7,6 +7,8 @@ import { waitForIntroFadeOut } from './introSequence';
 type ManagedVideoController = {
   hls: Hls | null;
   videoElement: HTMLVideoElement;
+  /** URL currently attached (may be the vertical cut). */
+  url: string;
   isReady: boolean;
   shouldPlayWhenReady: boolean;
   isPlaying: boolean;
@@ -28,6 +30,30 @@ let featuredHoverCleanups: Array<() => void> = [];
 
 const getVideoUrl = (videoElement: HTMLVideoElement) =>
   videoElement.getAttribute('data-src') || videoElement.currentSrc || videoElement.src || '';
+
+// ── Vertical (9:16) cuts ──────────────────────────────────────────────────────
+// Page videos can offer a vertical cut via data-src-vertical (e.g. the case hero embed, bound
+// to the CMS "Video Link - Case Hero - Vertical - 9x16" field; empty = none). It's only used on
+// phone-shaped portrait viewports: narrow (≤600px, so portrait tablets — 744px+ — keep the
+// landscape cut) and clearly portrait (≤3:4, which still covers small phones with tall browser
+// toolbars and excludes square-ish desktop windows). Crossing the threshold (rotation, resize)
+// swaps the source live.
+const VERTICAL_SRC_ATTR = 'data-src-vertical';
+const VERTICAL_VIEWPORT_QUERY = '(max-width: 600px) and (max-aspect-ratio: 3/4)';
+const SOURCE_SWAP_DELAY_MS = 250; // debounce drag-resizing back and forth across the threshold
+/** Dispatched on the <video> after its source was swapped (new hls instance / src). */
+export const VIDEO_SOURCE_CHANGE_EVENT = 'op:videosourcechange';
+
+const getVerticalVideoUrl = (videoElement: HTMLVideoElement) =>
+  videoElement.getAttribute(VERTICAL_SRC_ATTR)?.trim() || '';
+
+const getPageVideoUrl = (videoElement: HTMLVideoElement) => {
+  const verticalUrl = getVerticalVideoUrl(videoElement);
+  if (verticalUrl && window.matchMedia(VERTICAL_VIEWPORT_QUERY).matches) return verticalUrl;
+  return getVideoUrl(videoElement);
+};
+
+let verticalSourceCleanup: (() => void) | null = null;
 
 const isHomeManagedVideo = (videoElement: HTMLVideoElement) =>
   Boolean(videoElement.closest('.home-project-card'));
@@ -61,9 +87,19 @@ const playManagedVideo = (controller: ManagedVideoController) => {
     return;
   }
 
-  resetVideoToStart(controller.videoElement);
+  const { videoElement } = controller;
+  resetVideoToStart(videoElement);
   controller.isPlaying = true;
-  controller.videoElement.play().catch((error) => {
+  videoElement.play().catch((error) => {
+    // Refused with sound (e.g. after a source swap): keep the picture moving, muted. The sound
+    // toggle follows via volumechange.
+    if (!videoElement.muted && controller.shouldPlayWhenReady) {
+      videoElement.muted = true;
+      videoElement.play().catch(() => {
+        controller.isPlaying = false;
+      });
+      return;
+    }
     controller.isPlaying = false;
     console.error('Auto-play was prevented by the browser:', error);
   });
@@ -96,14 +132,23 @@ const setupVideo = (
   const controller: ManagedVideoController = {
     hls: null,
     videoElement,
+    url: videoUrl,
     isReady: false,
     shouldPlayWhenReady: false,
     isPlaying: false,
   };
 
   registry.set(videoElement, controller);
+  attachSource(controller);
+
+  return controller;
+};
+
+const attachSource = (controller: ManagedVideoController) => {
+  const { videoElement, url: videoUrl } = controller;
 
   const markReady = () => {
+    if (controller.url !== videoUrl) return; // superseded by a later swap
     controller.isReady = true;
     if (controller.shouldPlayWhenReady) {
       playManagedVideo(controller);
@@ -158,8 +203,46 @@ const setupVideo = (
       videoElement.addEventListener('loadedmetadata', markReady, { once: true });
     }
   }
+};
 
-  return controller;
+/** Swaps a managed video to another URL, keeping its play state (restarts from the top). */
+const swapSource = (controller: ManagedVideoController, url: string) => {
+  if (controller.url === url) return;
+  const { videoElement } = controller;
+
+  controller.hls?.destroy();
+  controller.hls = null;
+  controller.isReady = false;
+  controller.isPlaying = false;
+  controller.url = url;
+  attachSource(controller);
+  videoElement.dispatchEvent(new Event(VIDEO_SOURCE_CHANGE_EVENT));
+};
+
+const bindVerticalSources = () => {
+  verticalSourceCleanup?.();
+  verticalSourceCleanup = null;
+
+  const hasVertical = Array.from(managedPageVideos.keys()).some(getVerticalVideoUrl);
+  if (!hasVertical) return;
+
+  const query = window.matchMedia(VERTICAL_VIEWPORT_QUERY);
+  let timer: number | undefined;
+  const onChange = () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      managedPageVideos.forEach((controller) => {
+        if (!getVerticalVideoUrl(controller.videoElement)) return;
+        swapSource(controller, getPageVideoUrl(controller.videoElement));
+      });
+    }, SOURCE_SWAP_DELAY_MS);
+  };
+
+  query.addEventListener('change', onChange);
+  verticalSourceCleanup = () => {
+    window.clearTimeout(timer);
+    query.removeEventListener('change', onChange);
+  };
 };
 
 const destroyManagedVideos = (registry: Map<HTMLVideoElement, ManagedVideoController>) => {
@@ -368,7 +451,7 @@ export const initPageVideoPlayers = (root: ParentNode = document) => {
   videoElements.forEach((videoElement) => {
     if (isHomeManagedVideo(videoElement) || isWorkManagedVideo(videoElement)) return;
 
-    const videoUrl = getVideoUrl(videoElement);
+    const videoUrl = getPageVideoUrl(videoElement);
     if (!videoUrl) return;
 
     const controller = setupVideo(videoElement, videoUrl, managedPageVideos);
@@ -385,6 +468,8 @@ export const initPageVideoPlayers = (root: ParentNode = document) => {
       if (managedPageVideos.get(videoElement) === controller) playManagedVideo(controller);
     });
   });
+
+  bindVerticalSources();
 };
 
 // Non-standard per-browser hints for "does this media have an audio track".
@@ -401,12 +486,17 @@ const AUDIO_CODEC_PATTERN = /mp4a|ac-3|ec-3|opus|vorbis|flac|mp3/i;
  * Silent videos never fire. Returns a cleanup that stops watching.
  */
 export const watchVideoAudio = (videoElement: HTMLVideoElement, onAudio: () => void) => {
-  const cleanups: Array<() => void> = [];
   let done = false;
+  let detach: (() => void) | null = null;
+
+  const onSourceChange = () => {
+    if (!done) watchCurrentSource();
+  };
 
   const cleanup = () => {
-    cleanups.forEach((fn) => fn());
-    cleanups.length = 0;
+    detach?.();
+    detach = null;
+    videoElement.removeEventListener(VIDEO_SOURCE_CHANGE_EVENT, onSourceChange);
   };
 
   const found = () => {
@@ -416,55 +506,66 @@ export const watchVideoAudio = (videoElement: HTMLVideoElement, onAudio: () => v
     onAudio();
   };
 
-  const hls = managedPageVideos.get(videoElement)?.hls;
+  // Re-run whenever the source is swapped (vertical cut): the hls instance is replaced.
+  function watchCurrentSource() {
+    detach?.();
+    detach = null;
 
-  if (hls) {
-    // Manifest CODECS (e.g. "avc1…,mp4a.40.2") — available before any media loads.
-    if ((hls.levels ?? []).some((level) => level.audioCodec) || hls.audioTracks?.length) {
-      found();
-      return cleanup;
+    const hls = managedPageVideos.get(videoElement)?.hls;
+
+    if (hls) {
+      // Manifest CODECS (e.g. "avc1…,mp4a.40.2") — available before any media loads.
+      if ((hls.levels ?? []).some((level) => level.audioCodec) || hls.audioTracks?.length) {
+        found();
+        return;
+      }
+
+      const onManifestParsed = (_event: unknown, data: { audio: boolean; altAudio: boolean }) => {
+        if (data.audio || data.altAudio) found();
+      };
+      // Fallback for manifests that omit CODECS: inspect the first parsed segment.
+      const onBufferCodecs = (
+        _event: unknown,
+        data: { audio?: unknown; audiovideo?: { codec?: string } }
+      ) => {
+        if (data.audio || AUDIO_CODEC_PATTERN.test(data.audiovideo?.codec ?? '')) found();
+      };
+
+      hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+      hls.on(Hls.Events.BUFFER_CODECS, onBufferCodecs);
+      detach = () => {
+        hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+        hls.off(Hls.Events.BUFFER_CODECS, onBufferCodecs);
+      };
+      return;
     }
 
-    const onManifestParsed = (_event: unknown, data: { audio: boolean; altAudio: boolean }) => {
-      if (data.audio || data.altAudio) found();
+    // Native playback (Safari HLS, mp4): no codec info, so read browser hints as media loads.
+    const media = videoElement as MediaWithAudioHints;
+    const check = () => {
+      if (
+        media.audioTracks?.length ||
+        media.mozHasAudio ||
+        (media.webkitAudioDecodedByteCount ?? 0) > 0
+      ) {
+        found();
+      }
     };
-    // Fallback for manifests that omit CODECS: inspect the first parsed segment.
-    const onBufferCodecs = (
-      _event: unknown,
-      data: { audio?: unknown; audiovideo?: { codec?: string } }
-    ) => {
-      if (data.audio || AUDIO_CODEC_PATTERN.test(data.audiovideo?.codec ?? '')) found();
-    };
-
-    hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
-    hls.on(Hls.Events.BUFFER_CODECS, onBufferCodecs);
-    cleanups.push(() => {
-      hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
-      hls.off(Hls.Events.BUFFER_CODECS, onBufferCodecs);
-    });
-    return cleanup;
+    const events = ['loadedmetadata', 'playing', 'timeupdate'] as const;
+    events.forEach((name) => videoElement.addEventListener(name, check));
+    detach = () => events.forEach((name) => videoElement.removeEventListener(name, check));
+    check();
   }
 
-  // Native playback (Safari HLS, mp4): no codec info, so read browser hints as media loads.
-  const media = videoElement as MediaWithAudioHints;
-  const check = () => {
-    if (
-      media.audioTracks?.length ||
-      media.mozHasAudio ||
-      (media.webkitAudioDecodedByteCount ?? 0) > 0
-    ) {
-      found();
-    }
-  };
-  const events = ['loadedmetadata', 'playing', 'timeupdate'] as const;
-  events.forEach((name) => videoElement.addEventListener(name, check));
-  cleanups.push(() => events.forEach((name) => videoElement.removeEventListener(name, check)));
-  check();
+  videoElement.addEventListener(VIDEO_SOURCE_CHANGE_EVENT, onSourceChange);
+  watchCurrentSource();
 
   return cleanup;
 };
 
 export const destroyPageVideoPlayers = () => {
+  verticalSourceCleanup?.();
+  verticalSourceCleanup = null;
   featuredHoverCleanups.forEach((cleanup) => cleanup());
   featuredHoverCleanups = [];
   destroyManagedVideos(managedPageVideos);
