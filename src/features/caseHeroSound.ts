@@ -385,6 +385,20 @@ const bindHeroSound = ({ video, toggle, indicator, muteBtn, unmuteBtn }: Element
   muteBtn.addEventListener('keydown', onKeyDown);
   unmuteBtn.addEventListener('keydown', onKeyDown);
 
+  // If something other than this toggle mutes the video (e.g. the browser refused to resume
+  // it with sound after the page was in the background), show the toggle as muted. The
+  // session preference is left as-is; one tap turns the sound back on.
+  const onVolumeChange = () => {
+    if (!soundOn || !video.muted) return;
+    attemptId += 1;
+    stopVerify?.();
+    gsap.killTweensOf(video, 'volume');
+    video.volume = 1;
+    soundOn = false;
+    render();
+  };
+  video.addEventListener('volumechange', onVolumeChange);
+
   render(true);
   toggle.classList.remove(AVAILABLE_CLASS);
   const stopWatching = watchVideoAudio(video, () => {
@@ -394,6 +408,7 @@ const bindHeroSound = ({ video, toggle, indicator, muteBtn, unmuteBtn }: Element
 
   cleanups.push(() => {
     disposed = true;
+    video.removeEventListener('volumechange', onVolumeChange);
     stopWatching();
     stopVerify?.();
     attemptId += 1;

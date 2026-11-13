@@ -169,6 +169,7 @@ const destroyManagedVideos = (registry: Map<HTMLVideoElement, ManagedVideoContro
 
 export const initVideoPlayers = () => {
   destroyManagedVideos(managedHomeVideos);
+  installResumeListeners();
 
   const projectCards = document.querySelectorAll<HTMLElement>('.home-project-card');
 
@@ -300,8 +301,63 @@ const bindFeaturedCardHover = (card: HTMLElement, controller: ManagedVideoContro
   });
 };
 
+// ── Resume after the page was hidden (tab/app switch, phone lock) ─────────────
+// Mobile browsers pause media while the page is in the background. Muted autoplay video
+// usually resumes on its own, but video playing with sound stays paused on a frozen frame,
+// and after a long absence the HLS stream can stall. On return, restart anything that should
+// be playing; if the browser won't allow it with sound, fall back to muted so the picture
+// never freezes (the sound toggle reflects that). If it still isn't moving shortly after,
+// restart loading.
+const RESUME_STALL_CHECK_MS = 1500;
+let resumeListenersInstalled = false;
+
+const playOrFallBackToMuted = (videoElement: HTMLVideoElement) => {
+  videoElement.play().catch(() => {
+    if (videoElement.muted) return;
+    videoElement.muted = true;
+    videoElement.play().catch(() => {});
+  });
+};
+
+const resumeController = (controller: ManagedVideoController) => {
+  if (!controller.shouldPlayWhenReady || !controller.isReady) return;
+  const { videoElement } = controller;
+
+  if (videoElement.paused) playOrFallBackToMuted(videoElement);
+
+  const startTime = videoElement.currentTime;
+  window.setTimeout(() => {
+    if (document.hidden || !controller.shouldPlayWhenReady) return;
+    if (!videoElement.paused && videoElement.currentTime !== startTime) return; // playing fine
+
+    if (controller.hls) {
+      controller.hls.recoverMediaError();
+      controller.hls.startLoad(videoElement.currentTime);
+    } else {
+      videoElement.load();
+    }
+    playOrFallBackToMuted(videoElement);
+  }, RESUME_STALL_CHECK_MS);
+};
+
+const resumeManagedVideos = () => {
+  if (document.hidden) return;
+  managedPageVideos.forEach(resumeController);
+  managedHomeVideos.forEach(resumeController);
+};
+
+const installResumeListeners = () => {
+  if (resumeListenersInstalled) return;
+  resumeListenersInstalled = true;
+  document.addEventListener('visibilitychange', resumeManagedVideos);
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) resumeManagedVideos();
+  });
+};
+
 export const initPageVideoPlayers = (root: ParentNode = document) => {
   destroyPageVideoPlayers();
+  installResumeListeners();
 
   const videoElements = root.querySelectorAll<HTMLVideoElement>('video');
 
