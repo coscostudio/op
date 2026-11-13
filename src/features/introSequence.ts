@@ -63,10 +63,23 @@ let activeIntroScrollLocked = false;
 let _introActive = false;
 let _introResolve: (() => void) | null = null;
 let _introPromise: Promise<void> = Promise.resolve();
+let _introFadeResolve: (() => void) | null = null;
+let _introFadePromise: Promise<void> = Promise.resolve();
 
 // Resolves when the overlay is fully gone — page entrance animations wait on this
 export function waitForIntro(): Promise<void> {
   return _introPromise;
+}
+
+// Resolves when the overlay STARTS fading out — media playback (hero video/audio) starts here so
+// it's already running as the page is revealed. Already resolved when there's no intro.
+export function waitForIntroFadeOut(): Promise<void> {
+  return _introFadePromise;
+}
+
+function signalIntroFadeOut(): void {
+  _introFadeResolve?.();
+  _introFadeResolve = null;
 }
 
 // ── SVG restructure ──────────────────────────────────────────────────────────
@@ -337,6 +350,7 @@ function cleanup(introEl: HTMLElement): void {
 
   // Fire after overlay is fully gone so page content starts from blank
   _introActive = false;
+  signalIntroFadeOut(); // safety net if the timeline never reached its fade call
   _introResolve?.();
   _introResolve = null;
 }
@@ -832,6 +846,7 @@ function runTimeline(
   });
 
   // ── Overlay fade: second expansion, video fill, text ripple, and logo leave clear together
+  tl.call(signalIntroFadeOut, undefined, FILL_T - 0.48);
   tl.to(introEl, { opacity: 0, duration: 0.62, ease: EASE_IN }, FILL_T - 0.48);
 }
 
@@ -1040,6 +1055,7 @@ function runClockTimeline(
   );
   tl.to(erspRect, { attr: { width: 0 }, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
 
+  tl.call(signalIntroFadeOut, undefined, FADE_T);
   tl.to(introEl, { opacity: 0, duration: 0.62, ease: EASE_IN }, FADE_T);
   tl.add(() => words.forEach((word) => gsap.set(word, { clearProps: 'willChange' })), cleanupT);
 }
@@ -1289,6 +1305,7 @@ function runLineTimeline(
   );
   tl.to(erspRect, { attr: { width: 0 }, duration: LOGO_LEAVE_DUR, ease: EASE_IN_OUT }, IMPLODE_T);
 
+  tl.call(signalIntroFadeOut, undefined, FADE_T);
   tl.to(introEl, { opacity: 0, duration: FADE_DUR, ease: EASE_IN }, FADE_T);
   tl.add(() => words.forEach((word) => gsap.set(word, { clearProps: 'willChange' })), cleanupT);
 }
@@ -1321,6 +1338,9 @@ export function initIntroSequence(): void {
   _introActive = true;
   _introPromise = new Promise<void>((resolve) => {
     _introResolve = resolve;
+  });
+  _introFadePromise = new Promise<void>((resolve) => {
+    _introFadeResolve = resolve;
   });
   lockIntroScroll();
 
@@ -1482,6 +1502,7 @@ export function destroyIntroSequence(): void {
 
   if (_introActive) {
     _introActive = false;
+    signalIntroFadeOut();
     _introResolve?.();
     _introResolve = null;
   }

@@ -1,5 +1,6 @@
 import gsap from 'gsap';
 
+import { destroyCaseHeroSound, initCaseHeroSound } from './caseHeroSound';
 import { destroyCaseSliders, initCaseSliders } from './caseSlider';
 import { destroyHomeFanWheel, initHomeFanWheel, refreshHomeFanWheel } from './homeFanWheel';
 import { waitForIntro } from './introSequence';
@@ -171,11 +172,13 @@ export const barbaViews = [
     beforeEnter({ next }: Pick<ViewData, 'next'>) {
       destroyPageVideoPlayers();
       initPageVideoPlayers(next.container);
+      initCaseHeroSound(next.container);
       initCaseSliders();
       initRenderToReality(next.container);
     },
 
     beforeLeave() {
+      destroyCaseHeroSound();
       destroyCaseSliders();
       destroyRenderToReality();
       destroyPageVideoPlayers();

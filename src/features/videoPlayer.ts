@@ -1,5 +1,7 @@
 import Hls from 'hls.js';
 
+import { waitForIntroFadeOut } from './introSequence';
+
 type ManagedVideoController = {
   hls: Hls | null;
   videoElement: HTMLVideoElement;
@@ -318,8 +320,88 @@ export const initPageVideoPlayers = (root: ParentNode = document) => {
       return;
     }
 
-    playManagedVideo(controller);
+    // Hard load: buffer behind the intro and start as it fades out. Barba navs: already resolved.
+    waitForIntroFadeOut().then(() => {
+      if (managedPageVideos.get(videoElement) === controller) playManagedVideo(controller);
+    });
   });
+};
+
+// Non-standard per-browser hints for "does this media have an audio track".
+type MediaWithAudioHints = HTMLVideoElement & {
+  audioTracks?: { length: number }; // Safari
+  mozHasAudio?: boolean; // Firefox
+  webkitAudioDecodedByteCount?: number; // Chromium (grows once audio is decoded)
+};
+
+const AUDIO_CODEC_PATTERN = /mp4a|ac-3|ec-3|opus|vorbis|flac|mp3/i;
+
+/**
+ * Calls `onAudio` once if a managed page video turns out to contain an audio track.
+ * Silent videos never fire. Returns a cleanup that stops watching.
+ */
+export const watchVideoAudio = (videoElement: HTMLVideoElement, onAudio: () => void) => {
+  const cleanups: Array<() => void> = [];
+  let done = false;
+
+  const cleanup = () => {
+    cleanups.forEach((fn) => fn());
+    cleanups.length = 0;
+  };
+
+  const found = () => {
+    if (done) return;
+    done = true;
+    cleanup();
+    onAudio();
+  };
+
+  const hls = managedPageVideos.get(videoElement)?.hls;
+
+  if (hls) {
+    // Manifest CODECS (e.g. "avc1…,mp4a.40.2") — available before any media loads.
+    if ((hls.levels ?? []).some((level) => level.audioCodec) || hls.audioTracks?.length) {
+      found();
+      return cleanup;
+    }
+
+    const onManifestParsed = (_event: unknown, data: { audio: boolean; altAudio: boolean }) => {
+      if (data.audio || data.altAudio) found();
+    };
+    // Fallback for manifests that omit CODECS: inspect the first parsed segment.
+    const onBufferCodecs = (
+      _event: unknown,
+      data: { audio?: unknown; audiovideo?: { codec?: string } }
+    ) => {
+      if (data.audio || AUDIO_CODEC_PATTERN.test(data.audiovideo?.codec ?? '')) found();
+    };
+
+    hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+    hls.on(Hls.Events.BUFFER_CODECS, onBufferCodecs);
+    cleanups.push(() => {
+      hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
+      hls.off(Hls.Events.BUFFER_CODECS, onBufferCodecs);
+    });
+    return cleanup;
+  }
+
+  // Native playback (Safari HLS, mp4): no codec info, so read browser hints as media loads.
+  const media = videoElement as MediaWithAudioHints;
+  const check = () => {
+    if (
+      media.audioTracks?.length ||
+      media.mozHasAudio ||
+      (media.webkitAudioDecodedByteCount ?? 0) > 0
+    ) {
+      found();
+    }
+  };
+  const events = ['loadedmetadata', 'playing', 'timeupdate'] as const;
+  events.forEach((name) => videoElement.addEventListener(name, check));
+  cleanups.push(() => events.forEach((name) => videoElement.removeEventListener(name, check)));
+  check();
+
+  return cleanup;
 };
 
 export const destroyPageVideoPlayers = () => {
