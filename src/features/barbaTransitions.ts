@@ -105,7 +105,7 @@ export const fadeTransition = {
   // absorbed by the simultaneous fade — not visible as an isolated background flash.
   async enter(data: { next: { container: HTMLElement; namespace: string } }) {
     updateBodyTheme(data.next.namespace);
-    updateNavPageState(data.next.namespace, data.next.container);
+    updateNavPageState(data.next.namespace, data.next.container); // also syncs html[data-chrome]
     await gsap.to(data.next.container, {
       opacity: 1,
       duration: 0.4,

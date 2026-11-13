@@ -6,7 +6,7 @@ import { watchVideoAudio } from './videoPlayer';
 /**
  * Mute / unmute switch for case study hero videos (Figma "sound-toggle").
  *
- * Webflow markup (inside the hero, alongside the video embed):
+ * Webflow markup (toggle inside the hero, or beside it within .section_case-header):
  *   .component-case-header-top
  *     .case-hero-video > video.case-hero-video-bg
  *     [data-video-sound="toggle"]          ← pill wrapper
@@ -30,6 +30,9 @@ import { watchVideoAudio } from './videoPlayer';
  */
 
 const HERO_SELECTOR = '.component-case-header-top';
+// The toggle may sit inside the hero or beside it in the header section (e.g. inside a
+// 100svh wrapper that keeps it above mobile browser toolbars).
+const HERO_SECTION_SELECTOR = '.section_case-header';
 const VIDEO_SELECTOR = 'video.case-hero-video-bg';
 const TOGGLE_SELECTOR = '[data-video-sound="toggle"]';
 const INDICATOR_SELECTOR = '[data-video-sound="indicator"]';
@@ -416,7 +419,10 @@ export const initCaseHeroSound = (root: ParentNode = document) => {
 
   root.querySelectorAll<HTMLElement>(HERO_SELECTOR).forEach((hero) => {
     const video = hero.querySelector<HTMLVideoElement>(VIDEO_SELECTOR);
-    const toggle = hero.querySelector<HTMLElement>(TOGGLE_SELECTOR);
+    const scope = hero.closest<HTMLElement>(HERO_SECTION_SELECTOR) ?? hero;
+    const toggle =
+      hero.querySelector<HTMLElement>(TOGGLE_SELECTOR) ??
+      scope.querySelector<HTMLElement>(TOGGLE_SELECTOR);
     const muteBtn = toggle?.querySelector<HTMLElement>(MUTE_SELECTOR);
     const unmuteBtn = toggle?.querySelector<HTMLElement>(UNMUTE_SELECTOR);
     if (!video || !toggle || !muteBtn || !unmuteBtn) return;

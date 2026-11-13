@@ -60,11 +60,17 @@ type IntroVideoLayout = {
 let activeTl: gsap.core.Timeline | null = null;
 let activeHls: Hls | null = null;
 let activeIntroScrollLocked = false;
+let stopIntroPin: (() => void) | null = null;
 let _introActive = false;
 let _introResolve: (() => void) | null = null;
 let _introPromise: Promise<void> = Promise.resolve();
 let _introFadeResolve: (() => void) | null = null;
 let _introFadePromise: Promise<void> = Promise.resolve();
+
+// True while the intro overlay is running (hard load, until cleanup/destroy).
+export function isIntroActive(): boolean {
+  return _introActive;
+}
 
 // Resolves when the overlay is fully gone — page entrance animations wait on this
 export function waitForIntro(): Promise<void> {
@@ -158,15 +164,16 @@ function prepareIntroLogo(svg: SVGSVGElement, logoEl: HTMLElement | null): void 
 
 function prepareIntroOverlay(introEl: HTMLElement, videoWrapEl: HTMLElement): void {
   const videoLayer = videoWrapEl.closest<HTMLElement>('.intro-video-div');
-  const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+  // Phones and touch tablets: overscan the overlay past the screen edges so it also fills the
+  // area behind browser toolbars. Desktop: an exact viewport-sized box, same as before.
+  const overscan =
+    window.innerWidth <= MOBILE_BREAKPOINT || window.matchMedia('(pointer: coarse)').matches;
 
   gsap.set(introEl, {
     display: 'flex',
     overflow: 'visible',
     opacity: 0,
   });
-
-  if (!isMobile) return;
 
   const overscanHeight = `calc(100dvh + ${INTRO_MOBILE_OVERSCAN_REM}rem)`;
   const overscanProps = {
@@ -182,9 +189,49 @@ function prepareIntroOverlay(introEl: HTMLElement, videoWrapEl: HTMLElement): vo
     xPercent: 0,
     yPercent: -50,
   };
+  const viewportBoxProps = {
+    bottom: 'auto',
+    left: 0,
+    maxHeight: 'none',
+    right: 'auto',
+    width: '100%',
+    xPercent: 0,
+    yPercent: 0,
+  };
 
-  gsap.set(introEl, overscanProps);
-  if (videoLayer) gsap.set(videoLayer, overscanProps);
+  // iOS/iPadOS Safari (26+) never paints position:fixed content in the strip under its floating
+  // toolbar — only regular page content shows there — so a fixed overlay stops short however
+  // tall it is. Scroll is locked for the intro, so pin it as an absolute element at the current
+  // scroll position instead (re-pinned on resize/rotation and any stray scroll).
+  gsap.set(introEl, { ...(overscan ? overscanProps : viewportBoxProps), position: 'absolute' });
+
+  // The blurred video layer is a child of the overlay: centre it within / fill the overlay.
+  if (videoLayer) {
+    gsap.set(
+      videoLayer,
+      overscan ? { ...overscanProps, position: 'absolute' } : { position: 'absolute' }
+    );
+  }
+
+  const pin = () => {
+    const parent = introEl.offsetParent as HTMLElement | null;
+    const parentTop = parent ? parent.getBoundingClientRect().top : 0;
+    if (overscan) {
+      gsap.set(introEl, { top: window.innerHeight / 2 - parentTop });
+    } else {
+      gsap.set(introEl, { top: -parentTop, height: window.innerHeight });
+    }
+  };
+
+  stopIntroPin?.();
+  pin();
+  window.addEventListener('resize', pin);
+  window.addEventListener('scroll', pin, { passive: true });
+  stopIntroPin = () => {
+    window.removeEventListener('resize', pin);
+    window.removeEventListener('scroll', pin);
+    stopIntroPin = null;
+  };
 }
 
 function preventIntroScroll(event: Event): void {
@@ -342,6 +389,7 @@ function prepareIntroVideoLayout(
 }
 
 function cleanup(introEl: HTMLElement): void {
+  stopIntroPin?.();
   activeTl = null;
   activeHls?.destroy();
   activeHls = null;
@@ -1494,6 +1542,7 @@ export function initIntroSequence(): void {
 }
 
 export function destroyIntroSequence(): void {
+  stopIntroPin?.();
   activeTl?.kill();
   activeTl = null;
   activeHls?.destroy();

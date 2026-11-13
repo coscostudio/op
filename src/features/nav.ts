@@ -1,5 +1,7 @@
 import gsap from 'gsap';
 
+import { isIntroActive } from './introSequence';
+
 // Left-anchored nav logo math for the 221 x 29 SVG.
 const O_RIGHT = 26.13;
 const PAREN_LEFT = 124.81;
@@ -181,6 +183,10 @@ const ensureLogoHitbox = (logoLink: HTMLElement) => {
 };
 
 const ensureNavVisible = (nav: HTMLElement) => {
+  // The intro overlay is transparent, so the nav must stay hidden under it. Scroll/resize
+  // updates during the intro (e.g. scroll restoration or iOS toolbar resizes on reload) would
+  // otherwise pop it in; the barba `once` hook fades it in after the intro instead.
+  if (isIntroActive()) return;
   gsap.killTweensOf(nav, 'opacity');
   gsap.set(nav, { opacity: 1 });
 };
@@ -478,9 +484,43 @@ const applyNavVisualState = (condensed: boolean, immediate = false, skipVisibili
   setLogoMode(condensed ? 'condensed' : 'full', immediate);
 };
 
+// ── Page background / iOS status-bar tint ───────────────────────────────────
+// html[data-chrome="dark"|"light"] is mapped to the html/body background in .global-styles,
+// which iOS Safari uses to tint its status bar. It follows the nav's own state so the status
+// bar flips with the logo: case studies are dark over the hero and light once the logo switches
+// to primary (white content underneath); about stays dark; everything else is light.
+type ChromeTheme = 'dark' | 'light';
+let chromeThemeSyncEnabled = false;
+let lastIsActiveBg = false;
+
+const getChromeTheme = (
+  namespace: NavNamespace | null | undefined,
+  isActiveBg: boolean
+): ChromeTheme => {
+  if (namespace === 'about') return 'dark';
+  if (namespace === 'cases') return isActiveBg ? 'light' : 'dark';
+  return 'light';
+};
+
+const syncChromeTheme = () => {
+  if (!chromeThemeSyncEnabled) return;
+  const theme = getChromeTheme(activeNamespace, lastIsActiveBg);
+  const root = document.documentElement;
+  if (root.dataset.chrome !== theme) root.dataset.chrome = theme;
+};
+
+/** Called once the intro starts fading out (until then the head CSS keeps everything dark). */
+export const enableChromeThemeSync = () => {
+  chromeThemeSyncEnabled = true;
+  syncChromeTheme();
+};
+
 const applyNavTextState = (isActiveBg = false, immediate = false, skipVisibility = false) => {
   const nav = getNav();
   if (!nav) return;
+
+  lastIsActiveBg = isActiveBg;
+  syncChromeTheme();
 
   if (!skipVisibility) {
     ensureNavVisible(nav);

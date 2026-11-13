@@ -5,9 +5,18 @@ import { greetUser } from '$utils/greet';
 
 import { fadeTransition, patchMainWrapperCSS, updateBodyTheme } from './features/barbaTransitions';
 import { barbaViews } from './features/barbaViews';
-import { destroyIntroSequence, initIntroSequence } from './features/introSequence';
+import {
+  destroyIntroSequence,
+  initIntroSequence,
+  waitForIntroFadeOut,
+} from './features/introSequence';
 import { closeMobileNav, initMobileNav } from './features/mobileNav';
-import { initNavClock, updateNavCurrentState, updateNavPageState } from './features/nav';
+import {
+  enableChromeThemeSync,
+  initNavClock,
+  updateNavCurrentState,
+  updateNavPageState,
+} from './features/nav';
 import { initRenderToReality } from './features/renderToReality';
 import { getStoredWorkViewMode, initWorkView } from './features/workView';
 
@@ -38,6 +47,9 @@ window.Webflow.push(() => {
     ?.getAttribute('data-barba-namespace');
   updateBodyTheme(initialNamespace);
   updateNavPageState(initialNamespace, undefined, true, true);
+  // Body/status bar stay dark (head CSS) through the intro; html[data-chrome] only starts being
+  // driven by the nav state as the intro fades out. Resolves immediately when there's no intro.
+  waitForIntroFadeOut().then(enableChromeThemeSync);
 
   barba.init({
     preventRunning: true,
