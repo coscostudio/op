@@ -1,5 +1,7 @@
 import Hls from 'hls.js';
 
+import { applyHlsQuality, HLS_QUALITY_CONFIG } from '$utils/hlsQuality';
+
 import { waitForIntroFadeOut } from './introSequence';
 
 type ManagedVideoController = {
@@ -112,11 +114,13 @@ const setupVideo = (
 
   if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
     const hls = new Hls({
+      ...HLS_QUALITY_CONFIG,
       startPosition: -1,
       maxBufferLength: 30,
       maxMaxBufferLength: 60,
     });
     controller.hls = hls;
+    applyHlsQuality(hls, videoElement);
 
     hls.loadSource(videoUrl);
     hls.attachMedia(videoElement);

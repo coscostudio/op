@@ -1,6 +1,8 @@
 import gsap from 'gsap';
 import Hls from 'hls.js';
 
+import { applyHlsQuality, HLS_QUALITY_CONFIG } from '$utils/hlsQuality';
+
 // ── SVG path index map (viewBox 0 0 221 29, 20 flat paths) ──────────────────
 // [0]=O  [1-6]=utside  [7]=(  [8]=P  [9-18]=erspective  [19]=)
 //
@@ -326,7 +328,9 @@ function attachVideo(videoEl: HTMLVideoElement, src: string): Promise<void> {
   const readyPromise = waitForVideoReady(videoEl);
 
   if (Hls.isSupported() && src.includes('.m3u8')) {
-    activeHls = new Hls({ startPosition: 0, maxBufferLength: 30 });
+    activeHls = new Hls({ ...HLS_QUALITY_CONFIG, startPosition: 0, maxBufferLength: 30 });
+    // The intro video grows from a small circle to full screen: 1080p cap only.
+    applyHlsQuality(activeHls, videoEl, { matchElementSize: false });
     activeHls.loadSource(src);
     activeHls.attachMedia(videoEl);
     playIntroVideo(videoEl);

@@ -1,6 +1,8 @@
 import gsap from 'gsap';
 import Hls from 'hls.js';
 
+import { applyHlsQuality, HLS_QUALITY_CONFIG } from '$utils/hlsQuality';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Work View Mode Switcher
 //
@@ -70,7 +72,8 @@ function initWorkHls(video: HTMLVideoElement, url: string): void {
   video.setAttribute('data-hls-ready', '1');
 
   if (Hls.isSupported() && url.includes('.m3u8')) {
-    const hls = new Hls({ startPosition: -1, maxBufferLength: 15 });
+    const hls = new Hls({ ...HLS_QUALITY_CONFIG, startPosition: -1, maxBufferLength: 15 });
+    applyHlsQuality(hls, video);
     hls.loadSource(url);
     hls.attachMedia(video);
     workHlsInstances.push(hls);
@@ -460,7 +463,8 @@ function loadCursorVideo(url: string) {
     cursorHls = null;
   }
   if (Hls.isSupported() && url.includes('.m3u8')) {
-    cursorHls = new Hls({ startPosition: -1, maxBufferLength: 10 });
+    cursorHls = new Hls({ ...HLS_QUALITY_CONFIG, startPosition: -1, maxBufferLength: 10 });
+    applyHlsQuality(cursorHls, cursorVideo);
     cursorHls.loadSource(url);
     cursorHls.attachMedia(cursorVideo);
     cursorHls.on(Hls.Events.MANIFEST_PARSED, () => cursorVideo?.play().catch(() => {}));

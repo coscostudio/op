@@ -22,6 +22,8 @@ import {
   WebGLRenderer,
 } from 'three';
 
+import { applyHlsQuality, HLS_QUALITY_CONFIG } from '$utils/hlsQuality';
+
 const FAN_STYLE_ID = 'home-fan-wheel-styles';
 const MOBILE_BREAKPOINT = 479;
 const COMPACT_BREAKPOINT = 767;
@@ -1185,7 +1187,14 @@ class HomeFanWheel {
     video.setAttribute('playsinline', 'true');
 
     if (Hls.isSupported() && binding.item.videoSrc.includes('.m3u8')) {
-      const hls = new Hls({ startPosition: -1, maxBufferLength: 18, maxMaxBufferLength: 30 });
+      // Rendered into a WebGL texture (no on-screen element size): 1080p cap only.
+      const hls = new Hls({
+        ...HLS_QUALITY_CONFIG,
+        startPosition: -1,
+        maxBufferLength: 18,
+        maxMaxBufferLength: 30,
+      });
+      applyHlsQuality(hls, video, { matchElementSize: false });
       hls.loadSource(binding.item.videoSrc);
       hls.attachMedia(video);
       binding.hls = hls;
