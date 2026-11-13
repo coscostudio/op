@@ -154,6 +154,13 @@ const getNamespaceTextColor = (namespace: NavNamespace | null | undefined, isAct
   return TEXT_PRIMARY;
 };
 
+const getNavTone = (namespace: NavNamespace | null | undefined, isActiveBg = false) => {
+  const color = getNamespaceTextColor(namespace, isActiveBg);
+  if (color === TEXT_SECONDARY) return 'secondary';
+  if (color === LIGHT_ACCENT) return 'accent';
+  return 'primary';
+};
+
 const remToPx = (rem: number) =>
   rem * (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
 
@@ -489,9 +496,22 @@ const applyNavTextState = (isActiveBg = false, immediate = false, skipVisibility
     immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : NAV_COLOR_DUR;
   const targets = getColorTargets(nav);
 
+  // Expose nav state for Webflow CSS (e.g. .nav-link-2 colors + hover states):
+  //   data-nav-page  → current barba namespace
+  //   data-nav-tone  → primary | secondary | accent (the color the logo is heading to)
+  //   --nav-text     → the logo's live color, tweened in lockstep with the logo
+  nav.dataset.navPage = activeNamespace ?? '';
+  nav.dataset.navTone = getNavTone(activeNamespace, isActiveBg);
+
   gsap.killTweensOf(targets, 'color');
   gsap.to(targets, {
     color: textColor,
+    duration,
+    ease: NAV_MOTION_EASE,
+    overwrite: 'auto',
+  });
+  gsap.to(nav, {
+    '--nav-text': textColor,
     duration,
     ease: NAV_MOTION_EASE,
     overwrite: 'auto',
