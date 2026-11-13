@@ -399,6 +399,21 @@ const bindHeroSound = ({ video, toggle, indicator, muteBtn, unmuteBtn }: Element
   };
   video.addEventListener('volumechange', onVolumeChange);
 
+  // The travel distance depends on the buttons' sizes, which change across breakpoints (and
+  // read as 0 while the toggle is hidden before `.is-available`). Re-snap the indicator whenever
+  // the toggle or its buttons resize, unless it's being dragged.
+  let lastTravel = getTravel();
+  const resizeObserver =
+    indicator && typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+          const travel = getTravel();
+          if (travel === lastTravel || drag) return;
+          lastTravel = travel;
+          if (soundOn) gsap.set(indicator, { x: travel, overwrite: true });
+        })
+      : null;
+  [toggle, muteBtn, unmuteBtn].forEach((el) => resizeObserver?.observe(el));
+
   render(true);
   toggle.classList.remove(AVAILABLE_CLASS);
   const stopWatching = watchVideoAudio(video, () => {
@@ -408,6 +423,7 @@ const bindHeroSound = ({ video, toggle, indicator, muteBtn, unmuteBtn }: Element
 
   cleanups.push(() => {
     disposed = true;
+    resizeObserver?.disconnect();
     video.removeEventListener('volumechange', onVolumeChange);
     stopWatching();
     stopVerify?.();
