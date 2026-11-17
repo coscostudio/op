@@ -13,6 +13,7 @@ import {
 import { closeMobileNav, initMobileNav } from './features/mobileNav';
 import {
   enableChromeThemeSync,
+  expandNavLogoForTransition,
   initNavClock,
   updateNavCurrentState,
   updateNavPageState,
@@ -61,6 +62,7 @@ window.Webflow.push(() => {
   barba.hooks.before(() => {
     destroyIntroSequence();
     closeMobileNav(false, true);
+    expandNavLogoForTransition();
   });
 
   // Reset scroll on every page transition.

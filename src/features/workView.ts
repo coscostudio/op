@@ -428,6 +428,91 @@ let cursorXTo: ((...args: any[]) => any) | null = null;
 let cursorYTo: ((...args: any[]) => any) | null = null;
 let lastMouseX = 0;
 let lastMouseY = 0;
+// Bumped whenever the hovered row changes, so a late image/video "ready" from an earlier row
+// can't reveal the card.
+let cursorHoverToken = 0;
+
+// ─── Hover image preloading ───────────────────────────────────────────────────
+// The hover image is the row's "Image - Hero" (CMS), bound as the background of the collapsed
+// .worklist-expand embed. Backgrounds inside display:none aren't fetched, so without preloading
+// the first hover over each row showed an empty card until a ~170KB image downloaded — by
+// which time the cursor had usually moved on (rows without a video showed nothing at all).
+
+// Fetched a couple at a time in list order rather than all at once: on a slow connection a dozen
+// parallel downloads all finish late together, whereas a short queue makes each one usable
+// as early as possible. A hovered row that hasn't started yet jumps the queue.
+const PRELOAD_CONCURRENCY = 2;
+const hoverImageLoads = new Map<string, Promise<boolean>>();
+const hoverImageResolvers = new Map<string, (loaded: boolean) => void>();
+let preloadQueue: string[] = [];
+let preloadsInFlight = 0;
+
+function getBackgroundUrl(el: HTMLElement | null): string {
+  const bg = el?.style.backgroundImage ?? '';
+  const match = /url\(["']?(.*?)["']?\)/.exec(bg);
+  return match?.[1] ?? '';
+}
+
+/** Resolves once the image is downloaded and decoded (false if it failed). Doesn't fetch it. */
+function hoverImageReady(url: string): Promise<boolean> {
+  let ready = hoverImageLoads.get(url);
+  if (!ready) {
+    ready = new Promise<boolean>((resolve) => hoverImageResolvers.set(url, resolve));
+    hoverImageLoads.set(url, ready);
+  }
+  return ready;
+}
+
+function fetchHoverImage(url: string) {
+  const resolve = hoverImageResolvers.get(url);
+  if (!resolve) return; // already fetched or fetching
+  hoverImageResolvers.delete(url);
+  preloadsInFlight += 1;
+
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = url;
+  img
+    .decode()
+    .then(
+      () => true,
+      () => img.complete && img.naturalWidth > 0
+    )
+    .then((loaded) => {
+      resolve(loaded);
+      preloadsInFlight -= 1;
+      pumpPreloadQueue();
+    });
+}
+
+function pumpPreloadQueue() {
+  while (preloadsInFlight < PRELOAD_CONCURRENCY && preloadQueue.length) {
+    fetchHoverImage(preloadQueue.shift()!);
+  }
+}
+
+/** Waits for the hover image, fetching it now if the preload queue hasn't reached it. */
+function loadHoverImage(url: string): Promise<boolean> {
+  const ready = hoverImageReady(url);
+  if (hoverImageResolvers.has(url)) {
+    preloadQueue = preloadQueue.filter((queued) => queued !== url);
+    fetchHoverImage(url);
+  }
+  return ready;
+}
+
+function preloadHoverImages(urls: string[]) {
+  // The cursor card only exists for mouse/trackpad users.
+  if (!window.matchMedia('(hover: hover)').matches) return;
+  urls.forEach((url) => hoverImageReady(url));
+  preloadQueue = urls.filter((url) => hoverImageResolvers.has(url));
+  // Safari has no requestIdleCallback.
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(pumpPreloadQueue, { timeout: 1500 });
+  } else {
+    setTimeout(pumpPreloadQueue, 300);
+  }
+}
 
 function initCursorCard() {
   cursorCard = document.createElement('div');
@@ -475,6 +560,7 @@ function loadCursorVideo(url: string) {
 }
 
 function resetCursorMedia() {
+  cursorHoverToken += 1;
   if (cursorHls) {
     cursorHls.destroy();
     cursorHls = null;
@@ -628,6 +714,7 @@ export function initWorkView(pageContainer: HTMLElement) {
 
   // ── Per-item hover: worklist-item ──────────────────────────────────────────
   const itemHandlers: { el: HTMLElement; enter: () => void; leave: () => void }[] = [];
+  const hoverImageUrls: string[] = [];
 
   listItems.forEach((item) => {
     // The background image (from CMS) is set as inline style on .work-media-embed itself
@@ -637,29 +724,52 @@ export function initWorkView(pageContainer: HTMLElement) {
       '.worklist-expand .work-media-embed video'
     );
     const expandVideoUrl = expandVideo?.getAttribute('data-src') || '';
+    const imageUrl = getBackgroundUrl(mediaEmbed);
+    if (imageUrl) hoverImageUrls.push(imageUrl);
 
     const onEnter = () => {
       if (currentMode === 'list') {
-        if (!cursorCard) return;
+        if (!cursorCard || !cursorVideo) return;
+        // Nothing to show (no hero image or video in the CMS) — keep the card hidden.
+        if (!imageUrl && !expandVideoUrl) return;
+
+        const token = (cursorHoverToken += 1);
+        const card = cursorCard;
+        const video = cursorVideo;
+        const reveal = () => {
+          if (token === cursorHoverToken && currentMode === 'list') showCursorCard();
+        };
         snapCursorCardToMouse();
 
-        if (expandVideoUrl && cursorVideo) {
-          // Show video — hide background, reveal video element
-          cursorCard.style.backgroundImage = '';
-          cursorVideo.style.display = 'block';
+        // The hero image is the card background in both cases: on its own for rows without a
+        // video, and as the poster under the video while the stream starts.
+        card.style.backgroundImage = imageUrl ? `url("${imageUrl}")` : '';
+
+        if (expandVideoUrl) {
+          video.style.display = 'block';
+          video.style.opacity = '0';
+          video.addEventListener(
+            'playing',
+            () => {
+              if (token !== cursorHoverToken) return;
+              video.style.opacity = '1';
+              reveal();
+            },
+            { once: true }
+          );
           loadCursorVideo(expandVideoUrl);
         } else {
-          // Fall back to background image — hide video element so it doesn't cover the bg
-          if (cursorVideo) {
-            cursorVideo.style.display = 'none';
-            cursorVideo.pause();
-            cursorVideo.src = '';
-          }
-          const bg = mediaEmbed?.style.backgroundImage ?? '';
-          if (bg && bg !== 'none') cursorCard.style.backgroundImage = bg;
+          video.style.display = 'none';
+          video.pause();
+          video.removeAttribute('src');
         }
 
-        showCursorCard();
+        // Reveal once there's something to see, instead of an empty card.
+        if (imageUrl) {
+          loadHoverImage(imageUrl).then((loaded) => {
+            if (loaded) reveal();
+          });
+        }
       } else if (currentMode === 'list-expanded') {
         dimSiblings(item);
         if (expandVideo && expandVideoUrl) {
@@ -684,6 +794,8 @@ export function initWorkView(pageContainer: HTMLElement) {
     item.addEventListener('mouseleave', onLeave);
     itemHandlers.push({ el: item, enter: onEnter, leave: onLeave });
   });
+
+  preloadHoverImages(hoverImageUrls);
 
   // ── Per-item hover: workgrid-item ──────────────────────────────────────────
   const gridItems = q<HTMLElement>('.workgrid-item');
@@ -777,6 +889,7 @@ export function destroyWorkView() {
   cleanupFns = [];
   destroyWorkHls();
   destroyCursorCard();
+  preloadQueue = []; // unfetched images stay pending and are re-queued on the next visit
   container = null;
   currentMode = 'list';
   itemBorderColor = '';

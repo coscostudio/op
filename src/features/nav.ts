@@ -471,9 +471,11 @@ export const setNavDrawerOpenState = (open: boolean, keepLogoFull = false) => {
 };
 
 const applyNavVisualState = (condensed: boolean, immediate = false, skipVisibility = false) => {
-  if (isDrawerOpen || keepLogoFullUntilNextPageState) condensed = false; // drawer/transition forces full logo
+  if (isDrawerOpen) condensed = false; // the open drawer always shows the full logo
   const isActiveBg = condensed || isDrawerOpen;
 
+  // The text color follows the page underneath; only the logo shape is held at full during a
+  // page transition (otherwise the color would flip for the leaving page mid-fade).
   applyNavTextState(isActiveBg, immediate, skipVisibility);
 
   const nav = getNav();
@@ -481,7 +483,19 @@ const applyNavVisualState = (condensed: boolean, immediate = false, skipVisibili
 
   gsap.killTweensOf(nav, 'backgroundColor');
   nav.style.setProperty('background', 'transparent', 'important');
-  setLogoMode(condensed ? 'condensed' : 'full', immediate);
+  setLogoMode(condensed && !keepLogoFullUntilNextPageState ? 'condensed' : 'full', immediate);
+};
+
+/**
+ * Call when a barba transition starts. Every page opens scrolled to the top with the full logo,
+ * so a condensed logo is expanded right away, in step with the leave fade (same duration/ease)
+ * while the main thread is idle. Waiting for the scroll reset / enter hook started the 0.52s
+ * tween on top of the next page's init — on home the fan wheel setup blocks for ~300ms — and
+ * it rendered as a jump cut. Held until updateNavPageState() runs for the incoming page.
+ */
+export const expandNavLogoForTransition = () => {
+  keepLogoFullUntilNextPageState = true;
+  setLogoMode('full');
 };
 
 // ── Page background / iOS status-bar tint ───────────────────────────────────

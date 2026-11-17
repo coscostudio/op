@@ -114,11 +114,23 @@ Manages the three list/grid UI modes on the Work page.
 - Handles transitions between `list`, `list-expanded`, and `grid` views by cross-fading `.component-worklist` and `.component-workgrid`.
 - Enforces strict tween cancellation using `gsap.killTweensOf()` and `overwrite: 'auto'` on all visibility animations to prevent conflicting GSAP states during rapid UI mode toggles or item hovers.
 - Provides a fixed, mouse-following custom cursor card for the `list` view using `gsap.quickTo()`.
+- Cursor card media: the row's "Image - Hero" (bound as the background of the collapsed `.worklist-expand .work-media-embed`) is shown on its own for rows without a video, and as the poster under the video while the stream starts. The card is only revealed once the image is decoded or the video is playing; rows with neither stay hidden. Hover images are preloaded after init (hover devices only), two at a time in list order; a hovered row jumps the queue.
 
 ### nav (`src/features/nav.ts`)
 Refreshes `w--current` on all nav `<a>` links after each barba transition by comparing `href` pathname to the current URL. Webflow only sets this class on hard load — this keeps active states correct during SPA navigation.
 
+`expandNavLogoForTransition()` runs in `barba.hooks.before`: every page opens at the top with the full logo, so a condensed logo expands during the leave fade (same 0.52s / ease) while the main thread is idle — starting it at the scroll reset put it on top of the home fan wheel's init (~300ms blocked) and it rendered as a jump cut. The logo shape is held full until `updateNavPageState()`; the text color keeps following the page underneath.
+
 `ensureNavVisible()` is a no-op while `isIntroActive()` (introSequence): the intro overlay is transparent, so scroll/resize updates during the intro (scroll restoration, iOS toolbar resizes on reload) must not reveal the nav — the barba `once` hook fades it in after the intro.
+
+### caseSlider (`src/features/caseSlider.ts`)
+Finite drag sliders on case pages (`.slider` > `.case-slider-wrapper` > `.slide-w`; every slide gets the same `translateX`). Own implementation — smooothy was dropped here because its drag eased ~300ms behind the pointer at ~1.8× speed, so near the ends the slider kept moving after the hand stopped or briefly went the wrong way after a reversal (and its `destroy()` never removed its window listeners).
+- Drag (mouse/touch) is 1:1 with the pointer. Past either end: iOS-style rubber band (give tops out at 30% of the slider width), springs back on release.
+- Release keeps the drag velocity and glides (exponential settle, `SETTLE_RATE`; glide distance = velocity / rate, so it starts at the release speed), clamped to the ends. Pressing during a glide/spring catches it in place.
+- Touch: first 6px decide the axis — sideways drags the slider (non-passive `touchmove` only attached while that touch is down), vertical leaves the page scroll native.
+- Horizontal wheel: trackpad-sized deltas apply 1:1, mouse-wheel notches ease; always claimed so the ends don't trigger back/forward. Vertical wheel is left to the page.
+- `mousedown` is `preventDefault`ed (+ `selectstart`/`dragstart`): no selection highlight in Safari. Clicks after a drag are suppressed.
+- `.global-styles` needs `-webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent` on `.case-slider-wrapper` (Safari ignores unprefixed `user-select`; iOS otherwise flashes a gray tap overlay).
 
 ### loopSlider (`src/features/loopSlider.ts`)
 Infinite-scroll slider driven by Lenis smooth scroll. Supports:
@@ -172,7 +184,7 @@ Initialises HLS.js (or native HLS on Safari) for `video.project-media` elements 
 | `gsap` | GSAP animations — crossfade transitions, opacity/position tweens |
 | `hls.js` | HLS video streaming |
 | `lenis` | Smooth scroll for loopSlider |
-| `smooothy` | Smooth scroll (available as alternative) |
+| `smooothy` | Smooth scroll (currently unused — case sliders have their own implementation) |
 | `@finsweet/ts-utils` | Webflow utilities (publish date, etc.) |
 
 ---
