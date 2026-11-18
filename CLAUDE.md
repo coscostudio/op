@@ -80,10 +80,11 @@ dist/                         # Production build output (gitignored)
 - `gsap.set(container, { opacity: 0 })` in `beforeEnter` guarantees the container is hidden regardless of whether the CSS rule loaded
 
 **Views (`barbaViews.ts`) — namespaces:**
-- `home`: destroys slider on leave; inits slider + videos in `beforeEnter` (with `data-loop-slider-snap` for correct initial blur state); calls `remeasureLoopSlider()` in `afterEnter` via rAF to snap video blur after layout settles; controls `.home-blurb` opacity directly with GSAP (see below)
-- `about`: no additional logic — theme handled by transition
-- `work`: hides `.worklist-item` elements in `beforeEnter`, staggers them in (`opacity`, `y: 16→0`, 0.07s stagger) in `afterEnter`
-- `cases`: stub for future case study template page
+Page entrances share `src/utils/entrance.ts` (`hideForEntrance` in `beforeEnter`, `playEntrance` in `afterEnter`): `opacity 0→1`, `y: 16→0`, 0.45s `power2.out`, 0.07s stagger, in the order the selectors are listed. They start on `waitForPageReveal()` (introSequence) — 0.25s after the intro overlay starts its 0.62s fade (hard load), immediately on barba navs. The hard-load `once` container fade also starts there and isn't awaited, because barba only runs views' `afterEnter` after `once` resolves.
+- `home`: fan wheel init in `beforeEnter` (cards hidden), `revealHomeFanWheel()` staggers the WebGL cards once the intro overlay is fully gone (`waitForIntro`; 0.36s fade, 0.055s stagger, front card first, per-card `reveal` value respected by `applyRadialTransforms`); `.home-blurb-v3` + `.section_about-video` stagger alongside
+- `about`: staggers blurb, services title, each `.service-card`, statement/video, featured heading, each featured card. Theme handled by transition
+- `work`: staggers `.worklist-item` (list) or grid cards (`GRID_ITEM_SELECTOR`), then `initWorkView`
+- `cases`: hero media (`.case-hero-video`) fades on its own (0.8s, no y); hero copy, sound toggle and `.case-hero-heading` children stagger
 
 **`.home-blurb` special handling:**
 `.home-blurb` is `position:fixed` + `mix-blend-mode:difference` + `transition: opacity 0.2s`. Animating the parent container's opacity creates a compositing stacking context — the blend mode only resolves globally when the parent reaches `opacity:1`, causing the element to visually "pop". Fix: GSAP sets it to `opacity:0` in `beforeEnter` and fades it in independently in `afterEnter` after the container is at `opacity:1`.
@@ -111,6 +112,9 @@ three.js "fan wheel" hero on the home page. In `section` layout (content below t
 
 ### workView (`src/features/workView.ts`)
 Manages the three list/grid UI modes on the Work page.
+- Default view is `grid` (`DEFAULT_VIEW_MODE`); the visitor's pick persists in `sessionStorage['work-view-mode']`.
+- `list-expanded` is disabled (`EXPANDED_VIEW_ENABLED = false`) until every row has expand media: a stored value falls back to `list`, the toggle click is a no-op, and `.global-styles` hides `.view-toggle[viewtrigger="list-expanded"]`.
+- Grid cards are `.workgrid > .w-dyn-item` (Webflow class `.top-projects-card`), via `GRID_ITEM_SELECTOR`.
 - Handles transitions between `list`, `list-expanded`, and `grid` views by cross-fading `.component-worklist` and `.component-workgrid`.
 - Enforces strict tween cancellation using `gsap.killTweensOf()` and `overwrite: 'auto'` on all visibility animations to prevent conflicting GSAP states during rapid UI mode toggles or item hovers.
 - Provides a fixed, mouse-following custom cursor card for the `list` view using `gsap.quickTo()`.

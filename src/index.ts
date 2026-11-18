@@ -1,6 +1,7 @@
 import barba from '@barba/core';
 import gsap from 'gsap';
 
+import { hideForEntrance, playEntrance } from '$utils/entrance';
 import { greetUser } from '$utils/greet';
 
 import { fadeTransition, patchMainWrapperCSS, updateBodyTheme } from './features/barbaTransitions';
@@ -19,7 +20,7 @@ import {
   updateNavPageState,
 } from './features/nav';
 import { initRenderToReality } from './features/renderToReality';
-import { getStoredWorkViewMode, initWorkView } from './features/workView';
+import { getStoredWorkViewMode, GRID_ITEM_SELECTOR, initWorkView } from './features/workView';
 
 const initIntroSequenceOnDomReady = () => {
   if (document.readyState === 'loading') {
@@ -101,33 +102,23 @@ window.Webflow.push(() => {
         el.classList.toggle('is-active', el.getAttribute('viewTrigger') === savedMode);
       });
 
+      const worklist = barbaContainer.querySelector<HTMLElement>('.component-worklist');
+      const workgrid = barbaContainer.querySelector<HTMLElement>('.component-workgrid');
       if (savedMode === 'grid') {
-        const gridItems = Array.from(
-          barbaContainer.querySelectorAll<HTMLElement>('.workgrid-item')
-        );
-        gsap.set(gridItems, { opacity: 0, y: 16 });
-        gsap.to(gridItems, {
-          opacity: 1,
-          y: 0,
-          duration: 0.45,
-          ease: 'power2.out',
-          stagger: 0.07,
-          onComplete: () => initWorkView(barbaContainer),
-        });
+        if (worklist) gsap.set(worklist, { display: 'none' });
+        if (workgrid) gsap.set(workgrid, { display: 'block', opacity: 1 });
       } else {
-        const items = Array.from(barbaContainer.querySelectorAll<HTMLElement>('.worklist-item'));
-        const expandPanels = barbaContainer.querySelectorAll<HTMLElement>('.worklist-expand');
-        expandPanels.forEach((el) => gsap.set(el, { display: 'none', height: 0, opacity: 0 }));
-        gsap.set(items, { opacity: 0, y: 16 });
-        gsap.to(items, {
-          opacity: 1,
-          y: 0,
-          duration: 0.45,
-          ease: 'power2.out',
-          stagger: 0.07,
-          onComplete: () => initWorkView(barbaContainer),
-        });
+        barbaContainer
+          .querySelectorAll<HTMLElement>('.worklist-expand')
+          .forEach((el) => gsap.set(el, { display: 'none', height: 0, opacity: 0 }));
       }
+      const items = Array.from(
+        barbaContainer.querySelectorAll<HTMLElement>(
+          savedMode === 'grid' ? GRID_ITEM_SELECTOR : '.worklist-item'
+        )
+      );
+      hideForEntrance(items);
+      playEntrance(items, () => initWorkView(barbaContainer));
     } else if (namespace === 'cases') {
       initRenderToReality(barbaContainer);
     }

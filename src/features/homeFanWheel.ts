@@ -116,6 +116,17 @@ const CONFIG = {
   scrollTopThreshold: 8,
   // Wheel events closer together than this belong to one gesture (incl. trackpad momentum).
   wheelGestureGapMs: 180,
+
+  // ── Page-entrance reveal (same timing as the Work list stagger) ───────────
+  // Cards fade up one after another, starting with the front card and going around the wheel.
+  revealDuration: 0.36,
+  revealStagger: 0.055,
+  revealEase: 'power2.out',
+  // Start offset below the resting position, as a fraction of the card height (~16px on desktop).
+  revealYRatio: 0.08,
+
+  // Card corner radius in screen px (matches the 3px radius on the site's other media).
+  cornerRadiusPx: 3,
 };
 
 type FanState = 'IDLE_SPIN' | 'HOVER' | 'FEATURED_SLIDER';
@@ -158,6 +169,36 @@ type FanBinding = {
   isVideoReady: boolean;
   isVideoPlayPending: boolean;
   lastVideoPlayAttempt: number;
+  /** 0 → 1 page-entrance progress, tweened by reveal(). */
+  reveal: { value: number };
+  /** Corner radius in UV units (x, y), kept at CONFIG.cornerRadiusPx on screen each frame. */
+  cornerRadius: Vector2;
+};
+
+// Rounds the card corners in the fragment shader (antialiased), so the radius can follow each
+// card's on-screen size without regenerating textures.
+const applyRoundedCorners = (material: MeshBasicMaterial, cornerRadius: Vector2) => {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uCornerRadius = { value: cornerRadius };
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'varying vec2 vCornerUv;\nvoid main() {')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\n\tvCornerUv = uv;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        'void main() {',
+        'uniform vec2 uCornerRadius;\nvarying vec2 vCornerUv;\nvoid main() {'
+      )
+      .replace(
+        '#include <premultiplied_alpha_fragment>',
+        `vec2 cornerR = max(uCornerRadius, vec2(1e-5));
+	vec2 cornerD = max(cornerR - min(vCornerUv, 1.0 - vCornerUv), 0.0) / cornerR;
+	float cornerDist = length(cornerD);
+	float cornerAa = fwidth(cornerDist);
+	float cornerMask = 1.0 - smoothstep(1.0 - cornerAa, 1.0 + cornerAa, cornerDist);
+	gl_FragColor.a *= mix(1.0, cornerMask, step(1e-4, cornerD.x) * step(1e-4, cornerD.y));
+	#include <premultiplied_alpha_fragment>`
+      );
+  };
 };
 
 type InlineStyleSnapshot = {
@@ -651,6 +692,7 @@ class HomeFanWheel {
   private state: FanState = 'IDLE_SPIN';
   private animationFrame: number | null = null;
   private destroyed = false;
+  private revealStarted = false;
   private isTransitioning = false;
   private cameraMode: 'WHEEL' | 'FEATURED' = 'WHEEL';
   private cameraLookTargetY = 0;
@@ -770,7 +812,6 @@ class HomeFanWheel {
       if (this.destroyed) return;
       this.root.classList.add('is-ready');
       this.scheduleResize();
-      this.playIntro();
       this.start();
     });
   }
@@ -1077,6 +1118,8 @@ class HomeFanWheel {
         alphaTest: 0.001,
       });
       material.premultipliedAlpha = true;
+      const cornerRadius = new Vector2(0, 0);
+      applyRoundedCorners(material, cornerRadius);
       const mesh = new Mesh(new PlaneGeometry(1, 1), material);
       mesh.userData.fanIndex = index;
 
@@ -1096,6 +1139,8 @@ class HomeFanWheel {
         isVideoReady: false,
         isVideoPlayPending: false,
         lastVideoPlayAttempt: 0,
+        reveal: { value: 0 },
+        cornerRadius,
       };
 
       mesh.userData.fanBinding = binding;
@@ -1241,6 +1286,7 @@ class HomeFanWheel {
     gsap.killTweensOf(binding.mesh.rotation);
     gsap.killTweensOf(binding.mesh.scale);
     gsap.killTweensOf(binding.material);
+    gsap.killTweensOf(binding.reveal);
     binding.hls?.destroy();
     binding.videoElement?.pause();
     binding.videoElement?.removeAttribute('src');
@@ -1302,33 +1348,27 @@ class HomeFanWheel {
     this.animationFrame = window.requestAnimationFrame(tick);
   }
 
-  private playIntro() {
-    const { width, height } = this.getCardDimensions();
+  /**
+   * Page entrance: cards stay hidden from init until this runs (called by the home view once the
+   * page is revealed), then fade up in a stagger starting with the front card.
+   */
+  public reveal() {
+    if (this.revealStarted || this.destroyed) return;
+    this.revealStarted = true;
+    if (!this.bindings.length) return;
 
-    this.bindings.forEach((binding) => {
-      binding.mesh.scale.set(width * 0.86, height * 0.86, 1);
-      binding.material.opacity = 0;
-    });
-
-    gsap.to(
-      this.bindings.map((binding) => binding.material),
-      {
-        opacity: 1,
-        duration: 0.7,
-        ease: 'power2.out',
-        stagger: 0.045,
-      }
+    const front = this.bindings.reduce((best, binding) =>
+      Math.sin(binding.theta) > Math.sin(best.theta) ? binding : best
     );
+    const ordered = [...this.bindings.slice(front.index), ...this.bindings.slice(0, front.index)];
 
     gsap.to(
-      this.bindings.map((binding) => binding.mesh.scale),
+      ordered.map((binding) => binding.reveal),
       {
-        x: width,
-        y: height,
-        z: 1,
-        duration: 0.9,
-        ease: 'power3.out',
-        stagger: 0.035,
+        value: 1,
+        duration: CONFIG.revealDuration,
+        ease: CONFIG.revealEase,
+        stagger: CONFIG.revealStagger,
       }
     );
 
@@ -1337,11 +1377,43 @@ class HomeFanWheel {
     }
   }
 
+  /** Jump to the end of the entrance (e.g. the user opens the featured slider mid-reveal). */
+  private completeReveal() {
+    this.revealStarted = true;
+    this.bindings.forEach((binding) => {
+      gsap.killTweensOf(binding.reveal);
+      binding.reveal.value = 1;
+    });
+  }
+
+  private renderScene() {
+    this.updateCornerRadii();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Converts CONFIG.cornerRadiusPx into each card's UV space from its distance to the camera. */
+  private updateCornerRadii() {
+    const viewHeightPx = this.renderer.domElement.clientHeight;
+    if (!viewHeightPx) return;
+    const halfFovTangent = Math.tan((this.camera.fov * Math.PI) / 360);
+
+    this.bindings.forEach(({ mesh, cornerRadius }) => {
+      const distance = this.camera.position.distanceTo(mesh.position);
+      const pxPerUnit = viewHeightPx / (2 * Math.max(distance, 0.001) * halfFovTangent);
+      const widthPx = mesh.scale.x * pxPerUnit;
+      const heightPx = mesh.scale.y * pxPerUnit;
+      cornerRadius.set(
+        widthPx > 0 ? Math.min(0.5, CONFIG.cornerRadiusPx / widthPx) : 0,
+        heightPx > 0 ? Math.min(0.5, CONFIG.cornerRadiusPx / heightPx) : 0
+      );
+    });
+  }
+
   private animate(dt: number) {
     if (this.isTransitioning) {
       this.updateVideoPlayback();
       this.updateInteractionBounds();
-      this.renderer.render(this.scene, this.camera);
+      this.renderScene();
       return;
     }
 
@@ -1349,7 +1421,7 @@ class HomeFanWheel {
       this.updateFeaturedPosition(dt);
       this.updateVideoPlayback();
       this.updateInteractionBounds();
-      this.renderer.render(this.scene, this.camera);
+      this.renderScene();
       return;
     }
 
@@ -1377,7 +1449,7 @@ class HomeFanWheel {
     this.updateActiveFromFront(false);
     this.updateVideoPlayback();
     this.updateInteractionBounds();
-    this.renderer.render(this.scene, this.camera);
+    this.renderScene();
   }
 
   private updateInteractionBounds() {
@@ -1548,9 +1620,14 @@ class HomeFanWheel {
       const targetYOffset = isHovered ? CONFIG.hoverYOffset : 0;
       binding.hoverYOffset = lerp(binding.hoverYOffset, targetYOffset, alpha);
 
+      const reveal = binding.reveal.value;
+      const revealYOffset = this.prefersReducedMotion
+        ? 0
+        : (1 - reveal) * height * CONFIG.revealYRatio;
+
       const targetPosition = new Vector3(
         radius * Math.cos(binding.theta),
-        binding.hoverYOffset,
+        binding.hoverYOffset - revealYOffset,
         radius * Math.sin(binding.theta)
       );
 
@@ -1566,7 +1643,9 @@ class HomeFanWheel {
         lerp(binding.mesh.scale.y, height * targetScale, alpha),
         1
       );
-      binding.material.opacity = lerp(binding.material.opacity, 1, alpha);
+      // While revealing, opacity follows the entrance tween exactly; afterwards it eases back to 1
+      // (e.g. after returning from the featured slider).
+      binding.material.opacity = reveal < 1 ? reveal : lerp(binding.material.opacity, 1, alpha);
       binding.mesh.renderOrder = Math.round((binding.mesh.position.z + radius) * 100);
     });
   }
@@ -1615,6 +1694,7 @@ class HomeFanWheel {
 
   private enterFeatured(index: number) {
     if (this.isTransitioning || !this.bindings.length) return;
+    this.completeReveal();
 
     this.isTransitioning = true;
     this.state = 'FEATURED_SLIDER';
@@ -2355,7 +2435,7 @@ class HomeFanWheel {
     this.updateVideoPlayback();
 
     this.updateInteractionBounds();
-    this.renderer.render(this.scene, this.camera);
+    this.renderScene();
   }
 
   private onKeydown(event: KeyboardEvent) {
@@ -2445,6 +2525,11 @@ class HomeFanWheel {
 
 export const refreshHomeFanWheel = () => {
   homeFanWheelInstances.forEach((instance) => instance.refresh());
+};
+
+/** Starts the card entrance stagger (home view, once the page is revealed). */
+export const revealHomeFanWheel = () => {
+  homeFanWheelInstances.forEach((instance) => instance.reveal());
 };
 
 export const destroyHomeFanWheel = () => {

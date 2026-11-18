@@ -68,6 +68,12 @@ let _introResolve: (() => void) | null = null;
 let _introPromise: Promise<void> = Promise.resolve();
 let _introFadeResolve: (() => void) | null = null;
 let _introFadePromise: Promise<void> = Promise.resolve();
+let _pageRevealPromise: Promise<void> = Promise.resolve();
+
+// How long after the overlay starts its 0.62s power3.in fade the page content starts fading/
+// staggering in underneath. The overlay is still ~94% opaque here, so the page's entrance plays
+// as the overlay clears instead of starting once it's completely gone.
+const PAGE_REVEAL_DELAY_MS = 250;
 
 // True while the intro overlay is running (hard load, until cleanup/destroy).
 export function isIntroActive(): boolean {
@@ -83,6 +89,12 @@ export function waitForIntro(): Promise<void> {
 // it's already running as the page is revealed. Already resolved when there's no intro.
 export function waitForIntroFadeOut(): Promise<void> {
   return _introFadePromise;
+}
+
+// Resolves when page content should start its entrance (container fade + staggers): shortly after
+// the overlay starts fading out. Already resolved when there's no intro (barba navs).
+export function waitForPageReveal(): Promise<void> {
+  return _pageRevealPromise;
 }
 
 function signalIntroFadeOut(): void {
@@ -1394,6 +1406,9 @@ export function initIntroSequence(): void {
   _introFadePromise = new Promise<void>((resolve) => {
     _introFadeResolve = resolve;
   });
+  _pageRevealPromise = _introFadePromise.then(
+    () => new Promise<void>((resolve) => window.setTimeout(resolve, PAGE_REVEAL_DELAY_MS))
+  );
   lockIntroScroll();
 
   // ── Tagline setup ──────────────────────────────────────────────────────────

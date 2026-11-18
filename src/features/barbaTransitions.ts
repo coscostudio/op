@@ -1,6 +1,6 @@
 import gsap from 'gsap';
 
-import { waitForIntro } from './introSequence';
+import { waitForPageReveal } from './introSequence';
 import { NAV_MOTION_DURATION, NAV_MOTION_EASE, updateNavPageState } from './nav';
 
 /**
@@ -62,20 +62,22 @@ export const fadeTransition = {
   name: 'fade',
 
   // ── Hard load ─────────────────────────────────────────────────────────────────
-  // Keep native content hidden until the global intro overlay has fully faded out,
-  // then reveal it with the same timing as page enters. The persistent nav manages
+  // Keep native content hidden until the intro overlay is fading out (waitForPageReveal), then
+  // reveal it underneath with the same timing as page enters. The persistent nav manages
   // its own visibility so stale child opacity can never strand the links/logo.
   async once(data: { next: { container: HTMLElement } }) {
     const nav = document.querySelector<HTMLElement>('.nav-unified');
     if (nav) gsap.set(nav, { opacity: 0 }); // ensure it starts hidden just in case
     gsap.set(data.next.container, { opacity: 0 });
 
-    await waitForIntro();
+    await waitForPageReveal();
 
     const targets = [data.next.container];
     if (nav) targets.push(nav);
 
-    await gsap.to(targets, {
+    // Not awaited: barba runs the views' afterEnter only once `once` resolves, and the page
+    // entrance staggers should play alongside this fade, as the overlay clears.
+    gsap.to(targets, {
       opacity: 1,
       duration: 0.4,
       ease: 'power1.out',

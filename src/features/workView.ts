@@ -14,7 +14,7 @@ import { applyHlsQuality, HLS_QUALITY_CONFIG } from '$utils/hlsQuality';
 // Additional hover interactions:
 //   list mode          → mouse-follow cursor card showing the hovered item's media
 //   list-expanded mode → dim + blur siblings of hovered .worklist-item; play expand video
-//   grid mode          → play .work-media-embed video on hovered .workgrid-item
+//   grid mode          → play .work-media-embed video on hovered grid card
 //
 // Videos inside .work-media-embed use data-src (HLS .m3u8) — initialized lazily
 // via HLS.js on first hover and play/paused on subsequent hovers.
@@ -32,7 +32,18 @@ const EASE_INOUT = 'power2.inOut';
 
 const STORAGE_KEY = 'work-view-mode';
 
-let currentMode: WorkViewMode = 'list';
+// The Expanded view is off until every row has its expand media. While off, a stored
+// 'list-expanded' falls back to 'list' and its toggle does nothing (hidden in Webflow CSS).
+const EXPANDED_VIEW_ENABLED = false;
+
+// Shown until the visitor picks a view; their pick is remembered for the session.
+const DEFAULT_VIEW_MODE: WorkViewMode = 'grid';
+
+// Grid cards are the CMS items of .workgrid (currently .top-projects-card in Webflow).
+// Not `.component-workgrid .w-dyn-item`: that would also match the nested category bubbles.
+export const GRID_ITEM_SELECTOR = '.workgrid-item, .workgrid > .w-dyn-item';
+
+let currentMode: WorkViewMode = DEFAULT_VIEW_MODE;
 let container: HTMLElement | null = null;
 let cleanupFns: (() => void)[] = [];
 
@@ -44,11 +55,12 @@ let listBorderColor = '';
 export function getStoredWorkViewMode(): WorkViewMode {
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (stored === 'list' || stored === 'list-expanded' || stored === 'grid') return stored;
+    if (stored === 'list-expanded') return EXPANDED_VIEW_ENABLED ? stored : 'list';
+    if (stored === 'list' || stored === 'grid') return stored;
   } catch {
     // sessionStorage unavailable
   }
-  return 'list';
+  return DEFAULT_VIEW_MODE;
 }
 
 function saveWorkViewMode(mode: WorkViewMode) {
@@ -258,7 +270,7 @@ function staggerExitListItems(onComplete: () => void) {
 }
 
 function staggerExitGridItems(onComplete: () => void) {
-  const items = q<HTMLElement>('.workgrid-item');
+  const items = q<HTMLElement>(GRID_ITEM_SELECTOR);
   if (!items.length) {
     onComplete();
     return;
@@ -370,7 +382,7 @@ function toListExpanded(from: WorkViewMode) {
 function toGrid() {
   const worklist = qs<HTMLElement>('.component-worklist');
   const workgrid = qs<HTMLElement>('.component-workgrid');
-  const gridItems = q<HTMLElement>('.workgrid-item');
+  const gridItems = q<HTMLElement>(GRID_ITEM_SELECTOR);
 
   q<HTMLVideoElement>('.worklist-expand .work-media-embed video').forEach((video) => {
     resetWorkVideo(video);
@@ -798,7 +810,7 @@ export function initWorkView(pageContainer: HTMLElement) {
   preloadHoverImages(hoverImageUrls);
 
   // ── Per-item hover: workgrid-item ──────────────────────────────────────────
-  const gridItems = q<HTMLElement>('.workgrid-item');
+  const gridItems = q<HTMLElement>(GRID_ITEM_SELECTOR);
   const gridItemHandlers: { el: HTMLElement; enter: () => void; leave: () => void }[] = [];
 
   gridItems.forEach((gridItem) => {
@@ -839,13 +851,14 @@ export function initWorkView(pageContainer: HTMLElement) {
 
     const handler = (e: Event) => {
       e.preventDefault();
+      if (trigger === 'list-expanded' && !EXPANDED_VIEW_ENABLED) return;
       if (trigger === currentMode) return;
 
       // Hide cursor card
       hideCursorCard(true);
 
       restoreAllItems();
-      q<HTMLVideoElement>('.workgrid-item .work-media-embed video').forEach((video) => {
+      q<HTMLVideoElement>(`:is(${GRID_ITEM_SELECTOR}) .work-media-embed video`).forEach((video) => {
         resetWorkVideo(video);
         hideWorkVideo(video);
       });
@@ -891,7 +904,7 @@ export function destroyWorkView() {
   destroyCursorCard();
   preloadQueue = []; // unfetched images stay pending and are re-queued on the next visit
   container = null;
-  currentMode = 'list';
+  currentMode = DEFAULT_VIEW_MODE;
   itemBorderColor = '';
   listBorderColor = '';
 }

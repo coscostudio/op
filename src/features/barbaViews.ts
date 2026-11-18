@@ -1,17 +1,67 @@
 import gsap from 'gsap';
 
+import { hideForEntrance, playEntrance } from '$utils/entrance';
+
 import { destroyCaseHeroOverlay, initCaseHeroOverlay } from './caseHeroOverlay';
 import { destroyCaseHeroSound, initCaseHeroSound } from './caseHeroSound';
 import { destroyCaseSliders, initCaseSliders } from './caseSlider';
-import { destroyHomeFanWheel, initHomeFanWheel, refreshHomeFanWheel } from './homeFanWheel';
-import { waitForIntro } from './introSequence';
+import {
+  destroyHomeFanWheel,
+  initHomeFanWheel,
+  refreshHomeFanWheel,
+  revealHomeFanWheel,
+} from './homeFanWheel';
+import { waitForIntro, waitForPageReveal } from './introSequence';
 import { destroyRenderToReality, initRenderToReality } from './renderToReality';
 import {
   destroyHomeVideoPlayers,
   destroyPageVideoPlayers,
   initPageVideoPlayers,
 } from './videoPlayer';
-import { destroyWorkView, getStoredWorkViewMode, initWorkView } from './workView';
+import {
+  destroyWorkView,
+  getStoredWorkViewMode,
+  GRID_ITEM_SELECTOR,
+  initWorkView,
+} from './workView';
+
+// About page blocks, staggered in this order: blurb, services title, each service card,
+// statement + video, featured heading, each featured card.
+const ABOUT_ENTRANCE_SELECTORS = [
+  '.about-blurb',
+  '.title-services',
+  '.service-card',
+  '.about-statement',
+  '.top-projects-heading-flex',
+  '.top-projects-card',
+];
+
+// Home: the fan wheel cards stagger in WebGL (revealHomeFanWheel); these DOM blocks run the
+// same stagger alongside. .activecard-details is left out: the fan wheel owns its visibility.
+const HOME_ENTRANCE_SELECTORS = ['.home-blurb-v3', '.section_about-video'];
+
+// Case study: hero copy + the content just below it. The hero media is the section's
+// background, so it fades in on its own (CASE_HERO_MEDIA_SELECTOR) rather than in the stagger.
+const CASE_ENTRANCE_SELECTORS = [
+  '.case-hero-details',
+  '.case-hero-services',
+  '.case-sound-toggle-wrapper',
+  '.case-hero-heading > *',
+];
+const CASE_HERO_MEDIA_SELECTOR = '.component-case-header-top .case-hero-video';
+const CASE_HERO_MEDIA_FADE = 0.8;
+
+/** Items stagger in the order the selectors are listed (document order within each one). */
+const getEntranceItems = (container: HTMLElement, selectors: string[]) =>
+  selectors.flatMap((selector) => Array.from(container.querySelectorAll<HTMLElement>(selector)));
+
+const getAboutEntranceItems = (container: HTMLElement) =>
+  getEntranceItems(container, ABOUT_ENTRANCE_SELECTORS);
+
+const getWorkEntranceItems = (container: HTMLElement, mode: string) =>
+  Array.from(
+    container.querySelectorAll<HTMLElement>(mode === 'grid' ? GRID_ITEM_SELECTOR : '.worklist-item')
+  );
 
 // Minimal barba data shape — avoid importing @barba/core types just for views
 type ViewData = {
@@ -36,8 +86,9 @@ export const barbaViews = [
     },
 
     beforeEnter({ next }: Pick<ViewData, 'next'>) {
-      initHomeFanWheel(next.container);
+      initHomeFanWheel(next.container); // cards start hidden until revealHomeFanWheel()
       initPageVideoPlayers(next.container);
+      hideForEntrance(getEntranceItems(next.container, HOME_ENTRANCE_SELECTORS));
 
       // NOTE: .home-blurb (position:fixed, mix-blend-mode:difference) is intentionally
       // NOT controlled separately. It fades with the container. The blend mode compositing
@@ -45,7 +96,14 @@ export const barbaViews = [
       // a visible delay that is far more noticeable.
     },
 
-    afterEnter() {
+    afterEnter({ next }: Pick<ViewData, 'next'>) {
+      waitForPageReveal().then(() => {
+        playEntrance(getEntranceItems(next.container, HOME_ENTRANCE_SELECTORS));
+      });
+      // The cards wait until the intro overlay is fully gone (hard load) so the whole stagger is
+      // visible rather than starting under the fading overlay. Barba navs: resolves immediately.
+      waitForIntro().then(() => revealHomeFanWheel());
+
       // On direct loads with intro playing: wait for it to complete so the slider
       // remeasure fires after the overlay is gone (correct visibility state).
       // On barba transitions: waitForIntro resolves immediately.
@@ -65,6 +123,12 @@ export const barbaViews = [
     beforeEnter({ next }: Pick<ViewData, 'next'>) {
       destroyPageVideoPlayers();
       initPageVideoPlayers(next.container);
+      hideForEntrance(getAboutEntranceItems(next.container));
+    },
+
+    afterEnter({ next }: Pick<ViewData, 'next'>) {
+      // Hard load: starts as the intro overlay fades. Barba nav: resolves immediately.
+      waitForPageReveal().then(() => playEntrance(getAboutEntranceItems(next.container)));
     },
 
     beforeLeave() {
@@ -90,71 +154,27 @@ export const barbaViews = [
         el.classList.toggle('is-active', el.getAttribute('viewTrigger') === savedMode);
       });
 
+      // Same stagger-in for both layouts; only the visible one is shown.
+      const worklist = next.container.querySelector<HTMLElement>('.component-worklist');
+      const workgrid = next.container.querySelector<HTMLElement>('.component-workgrid');
       if (savedMode === 'grid') {
-        // Hide worklist, reveal workgrid at opacity 0 for stagger entry
-        const worklist = next.container.querySelector<HTMLElement>('.component-worklist');
-        const workgrid = next.container.querySelector<HTMLElement>('.component-workgrid');
         if (worklist) gsap.set(worklist, { display: 'none' });
-        if (workgrid) gsap.set(workgrid, { display: 'block', opacity: 0 });
-        const gridItems = next.container.querySelectorAll<HTMLElement>('.workgrid-item');
-        if (gridItems.length) gsap.set(Array.from(gridItems), { opacity: 0, y: 16 });
+        if (workgrid) gsap.set(workgrid, { display: 'block', opacity: 1 });
       } else {
-        // list or list-expanded: hide worklist items for stagger, hide expand panels
-        const items = next.container.querySelectorAll<HTMLElement>('.worklist-item');
-        if (items.length) gsap.set(Array.from(items), { opacity: 0, y: 16 });
         const expandPanels = next.container.querySelectorAll<HTMLElement>('.worklist-expand');
         expandPanels.forEach((el) => gsap.set(el, { display: 'none', height: 0, opacity: 0 }));
       }
+      hideForEntrance(getWorkEntranceItems(next.container, savedMode));
     },
 
     afterEnter({ next }: Pick<ViewData, 'next'>) {
       const savedMode = getStoredWorkViewMode();
 
-      // On direct loads with intro playing: delay entrance until overlay fades.
-      // On barba transitions: resolves immediately.
-      waitForIntro().then(() => {
-        if (savedMode === 'grid') {
-          const workgrid = next.container.querySelector<HTMLElement>('.component-workgrid');
-          const gridItems = Array.from(
-            next.container.querySelectorAll<HTMLElement>('.workgrid-item')
-          );
-
-          if (workgrid) {
-            gsap.to(workgrid, {
-              opacity: 1,
-              duration: 0.45,
-              ease: 'power2.out',
-              overwrite: 'auto',
-            });
-          }
-          if (gridItems.length) {
-            gsap.to(gridItems, {
-              opacity: 1,
-              y: 0,
-              duration: 0.45,
-              ease: 'power2.out',
-              stagger: 0.07,
-              onComplete: () => initWorkView(next.container),
-            });
-          } else {
-            initWorkView(next.container);
-          }
-        } else {
-          // list or list-expanded
-          const items = Array.from(next.container.querySelectorAll<HTMLElement>('.worklist-item'));
-          if (items.length) {
-            gsap.to(items, {
-              opacity: 1,
-              y: 0,
-              duration: 0.45,
-              ease: 'power2.out',
-              stagger: 0.07,
-              onComplete: () => initWorkView(next.container),
-            });
-          } else {
-            initWorkView(next.container);
-          }
-        }
+      // Hard load: starts as the intro overlay fades. Barba nav: resolves immediately.
+      waitForPageReveal().then(() => {
+        playEntrance(getWorkEntranceItems(next.container, savedMode), () =>
+          initWorkView(next.container)
+        );
       });
     },
 
@@ -177,6 +197,25 @@ export const barbaViews = [
       initCaseHeroOverlay(next.container);
       initCaseSliders();
       initRenderToReality(next.container);
+
+      const heroMedia = next.container.querySelector<HTMLElement>(CASE_HERO_MEDIA_SELECTOR);
+      if (heroMedia) gsap.set(heroMedia, { opacity: 0 });
+      hideForEntrance(getEntranceItems(next.container, CASE_ENTRANCE_SELECTORS));
+    },
+
+    afterEnter({ next }: Pick<ViewData, 'next'>) {
+      waitForPageReveal().then(() => {
+        const heroMedia = next.container.querySelector<HTMLElement>(CASE_HERO_MEDIA_SELECTOR);
+        if (heroMedia) {
+          gsap.to(heroMedia, {
+            opacity: 1,
+            duration: CASE_HERO_MEDIA_FADE,
+            ease: 'power1.out',
+            clearProps: 'opacity',
+          });
+        }
+        playEntrance(getEntranceItems(next.container, CASE_ENTRANCE_SELECTORS));
+      });
     },
 
     beforeLeave() {
