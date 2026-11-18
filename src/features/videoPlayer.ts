@@ -2,7 +2,7 @@ import Hls from 'hls.js';
 
 import { applyHlsQuality, HLS_QUALITY_CONFIG } from '$utils/hlsQuality';
 
-import { waitForIntroFadeOut } from './introSequence';
+import { waitForIntroFadeOut, waitForIntroVideo } from './introSequence';
 
 type ManagedVideoController = {
   hls: Hls | null;
@@ -163,12 +163,18 @@ const attachSource = (controller: ManagedVideoController) => {
       startPosition: -1,
       maxBufferLength: 30,
       maxMaxBufferLength: 60,
+      autoStartLoad: false,
     });
     controller.hls = hls;
     applyHlsQuality(hls, videoElement);
 
     hls.loadSource(videoUrl);
     hls.attachMedia(videoElement);
+    // Hard load: start buffering once the intro video has its first segment (≤1.2s), so the two
+    // don't split the bandwidth; still well ahead of the intro fade-out. Barba navs: immediate.
+    waitForIntroVideo().then(() => {
+      if (controller.hls === hls) hls.startLoad();
+    });
 
     hls.on(Hls.Events.MANIFEST_PARSED, markReady);
 

@@ -38,6 +38,9 @@ const ERSP_CLIP_W_FINAL = ERSP_RIGHT - P_RIGHT; // 76.67
 const FALLBACK_PRIMARY_ROW = 1; // upper-middle row of 4 — used only if Webflow marker is missing
 const CIRCLE_START_ANGLE = -112.5;
 const VIDEO_READY_TIMEOUT_MS = 1200;
+// The intro video sits under a frosted-glass blur for the whole intro, so 720p (short side) looks
+// the same as 1080p at roughly half the download — and it has to arrive within the 1.2s wait.
+const INTRO_VIDEO_MAX_SHORT_SIDE = 720;
 const INTRO_FADE_IN_DUR = 0.42;
 const INITIAL_VIDEO_SCALE = 1.16;
 const INITIAL_VIDEO_MAX_VIEWPORT = 0.92;
@@ -69,6 +72,7 @@ let _introPromise: Promise<void> = Promise.resolve();
 let _introFadeResolve: (() => void) | null = null;
 let _introFadePromise: Promise<void> = Promise.resolve();
 let _pageRevealPromise: Promise<void> = Promise.resolve();
+let _introVideoPromise: Promise<void> = Promise.resolve();
 
 // How long after the overlay starts its 0.62s power3.in fade the page content starts fading/
 // staggering in underneath. The overlay is still ~94% opaque here, so the page's entrance plays
@@ -89,6 +93,13 @@ export function waitForIntro(): Promise<void> {
 // it's already running as the page is revealed. Already resolved when there's no intro.
 export function waitForIntroFadeOut(): Promise<void> {
   return _introFadePromise;
+}
+
+// Resolves once the intro video is ready (or the intro gave up waiting for it, ≤1.2s) — i.e. when
+// the intro animation starts. Other media waits for this before downloading so it doesn't race the
+// intro video's first segment. Already resolved when there's no intro (barba navs).
+export function waitForIntroVideo(): Promise<void> {
+  return _introVideoPromise;
 }
 
 // Resolves when page content should start its entrance (container fade + staggers): shortly after
@@ -341,8 +352,11 @@ function attachVideo(videoEl: HTMLVideoElement, src: string): Promise<void> {
 
   if (Hls.isSupported() && src.includes('.m3u8')) {
     activeHls = new Hls({ ...HLS_QUALITY_CONFIG, startPosition: 0, maxBufferLength: 30 });
-    // The intro video grows from a small circle to full screen: 1080p cap only.
-    applyHlsQuality(activeHls, videoEl, { matchElementSize: false });
+    // Grows from a small circle to full screen (no stable element size): fixed 720p cap.
+    applyHlsQuality(activeHls, videoEl, {
+      matchElementSize: false,
+      maxShortSide: INTRO_VIDEO_MAX_SHORT_SIDE,
+    });
     activeHls.loadSource(src);
     activeHls.attachMedia(videoEl);
     playIntroVideo(videoEl);
@@ -1441,6 +1455,7 @@ export function initIntroSequence(): void {
   // Init video
   const src = videoEl.getAttribute('data-src') || videoEl.getAttribute('src') || '';
   const videoReady = src ? attachVideo(videoEl, src) : Promise.resolve();
+  _introVideoPromise = videoReady;
   const startIntro = () => {
     if (!_introActive || activeTl?.isActive()) return;
 

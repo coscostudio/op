@@ -5,6 +5,7 @@ import {
   CanvasTexture,
   Color,
   DoubleSide,
+  ImageBitmapLoader,
   LinearFilter,
   LinearMipmapLinearFilter,
   Mesh,
@@ -23,6 +24,8 @@ import {
 } from 'three';
 
 import { applyHlsQuality, HLS_QUALITY_CONFIG } from '$utils/hlsQuality';
+
+import { waitForIntroFadeOut, waitForIntroVideo } from './introSequence';
 
 const FAN_STYLE_ID = 'home-fan-wheel-styles';
 const MOBILE_BREAKPOINT = 479;
@@ -610,44 +613,21 @@ const injectFanStyles = () => {
   document.head.appendChild(style);
 };
 
-const createFallbackTexture = (item: FanItem) => {
+// Shown until a card's poster/video arrives: a flat fill in the Webflow "dark - accent" token.
+const FALLBACK_COLOR_VAR = '--base-color-brand--dark-accent';
+const FALLBACK_COLOR = '#71706e';
+
+const createFallbackTexture = () => {
   const canvas = document.createElement('canvas');
-  canvas.width = 768;
-  canvas.height = 1024;
+  canvas.width = 2;
+  canvas.height = 2;
   const ctx = canvas.getContext('2d');
 
   if (ctx) {
-    ctx.fillStyle = '#f1eee7';
+    ctx.fillStyle =
+      getComputedStyle(document.documentElement).getPropertyValue(FALLBACK_COLOR_VAR).trim() ||
+      FALLBACK_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#111111';
-    ctx.font = '600 58px Arial, Helvetica, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-
-    const words = (item.title || 'Outside Perspective').split(/\s+/);
-    const lines: string[] = [];
-    let current = '';
-
-    words.forEach((word) => {
-      const next = current ? `${current} ${word}` : word;
-      if (ctx.measureText(next).width > 560 && current) {
-        lines.push(current);
-        current = word;
-      } else {
-        current = next;
-      }
-    });
-    if (current) lines.push(current);
-
-    lines.slice(0, 4).forEach((line, index) => {
-      ctx.fillText(line, 82, 430 + index * 72);
-    });
-
-    if (item.subtitle) {
-      ctx.font = '400 34px Arial, Helvetica, sans-serif';
-      ctx.fillStyle = '#555555';
-      ctx.fillText(item.subtitle, 82, 430 + Math.min(lines.length, 4) * 72 + 58);
-    }
   }
 
   const texture = new CanvasTexture(canvas);
@@ -684,6 +664,10 @@ class HomeFanWheel {
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2(20, 20);
   private readonly loader = new TextureLoader();
+  // Off-main-thread poster decoding where createImageBitmap exists (all current browsers).
+  private readonly posterQueue: Array<() => void> = [];
+  private readonly bitmapLoader =
+    typeof createImageBitmap === 'function' ? new ImageBitmapLoader() : null;
   private readonly bindings: FanBinding[] = [];
   private readonly styleSnapshots: InlineStyleSnapshot[] = [];
   private readonly prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -823,6 +807,8 @@ class HomeFanWheel {
   public destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    // Still-queued posters dispose themselves (and close their ImageBitmaps) once destroyed.
+    this.posterQueue.splice(0).forEach((applyPoster) => applyPoster());
 
     if (this.animationFrame !== null) {
       window.cancelAnimationFrame(this.animationFrame);
@@ -1107,7 +1093,7 @@ class HomeFanWheel {
 
   private buildCards() {
     this.items.forEach((item, index) => {
-      const texture = createFallbackTexture(item);
+      const texture = createFallbackTexture();
       const material = new MeshBasicMaterial({
         map: texture,
         color: 0xffffff,
@@ -1153,43 +1139,91 @@ class HomeFanWheel {
   }
 
   private loadPoster(binding: FanBinding) {
-    this.loader.load(
+    // Hard load: let the intro video's first segment go first (resolves after ~1s at most).
+    waitForIntroVideo().then(() => {
+      if (this.destroyed) return;
+      if (this.bitmapLoader) this.loadPosterBitmap(binding, this.bitmapLoader);
+      else this.loadPosterImage(binding);
+    });
+  }
+
+  /**
+   * Decodes the poster off the main thread (createImageBitmap). Through an <img>, WebGL decodes the
+   * image synchronously inside the render frame's texture upload: 30–300ms stalls per poster,
+   * measured during the intro and the home entrance.
+   */
+  private loadPosterBitmap(binding: FanBinding, loader: ImageBitmapLoader) {
+    loader.load(
       binding.item.posterSrc,
-      (texture) => {
+      (bitmap) => {
         if (this.destroyed) {
-          texture.dispose();
+          bitmap.close();
           return;
         }
-
-        texture.colorSpace = SRGBColorSpace;
-        texture.generateMipmaps = true;
-        texture.minFilter = LinearMipmapLinearFilter;
-        texture.magFilter = LinearFilter;
-
-        const image = texture.image as {
-          naturalWidth?: number;
-          naturalHeight?: number;
-          width?: number;
-          height?: number;
-        };
-        const width = image?.naturalWidth ?? image?.width ?? 0;
-        const height = image?.naturalHeight ?? image?.height ?? 0;
-        if (width > 0 && height > 0) {
-          this.applyTextureCover(texture, width / height);
-        }
-
-        binding.texture?.dispose();
-        binding.texture = texture;
-        if (!binding.isVideoReady) {
-          binding.material.map = texture;
-          binding.material.needsUpdate = true;
-        }
+        const texture = new Texture(bitmap);
+        // WebGL uploads ImageBitmaps top row first (UNPACK_FLIP_Y is off/ignored for them), so the
+        // image is flipped back in UV space instead — see applyTextureCover.
+        texture.flipY = false;
+        texture.userData.flipV = true;
+        texture.addEventListener('dispose', () => bitmap.close());
+        this.queuePosterTexture(binding, texture);
       },
       undefined,
       () => {
-        // Canvas fallback stays visible if the poster fails.
+        // Flat fallback stays visible if the poster fails.
       }
     );
+  }
+
+  private loadPosterImage(binding: FanBinding) {
+    this.loader.load(
+      binding.item.posterSrc,
+      (texture) => this.queuePosterTexture(binding, texture),
+      undefined,
+      () => {
+        // Flat fallback stays visible if the poster fails.
+      }
+    );
+  }
+
+  /**
+   * Posters are uploaded to the GPU one per frame: cached posters all arrive in the same tick (right
+   * as the intro appears), and uploading ~11 of them in one render blocked a frame for ~150ms.
+   */
+  private queuePosterTexture(binding: FanBinding, texture: Texture) {
+    this.posterQueue.push(() => this.applyPosterTexture(binding, texture));
+  }
+
+  private applyPosterTexture(binding: FanBinding, texture: Texture) {
+    // Destroyed, or the video already replaced the poster (slow poster vs. a fast stream): drop it.
+    // (Assigning it would also dispose the live video texture, which binding.texture now holds.)
+    if (this.destroyed || binding.isVideoReady) {
+      texture.dispose();
+      return;
+    }
+
+    texture.colorSpace = SRGBColorSpace;
+    texture.generateMipmaps = true;
+    texture.minFilter = LinearMipmapLinearFilter;
+    texture.magFilter = LinearFilter;
+
+    const image = texture.image as {
+      naturalWidth?: number;
+      naturalHeight?: number;
+      width?: number;
+      height?: number;
+    };
+    const width = image?.naturalWidth ?? image?.width ?? 0;
+    const height = image?.naturalHeight ?? image?.height ?? 0;
+    if (width > 0 && height > 0) {
+      this.applyTextureCover(texture, width / height);
+    }
+
+    binding.texture?.dispose();
+    binding.texture = texture;
+    texture.needsUpdate = true;
+    binding.material.map = texture;
+    binding.material.needsUpdate = true;
   }
 
   private applyTextureCover(texture: Texture | VideoTexture, mediaAspect: number) {
@@ -1204,6 +1238,10 @@ class HomeFanWheel {
       repeatY = safeMediaAspect / cardAspect;
     }
 
+    // ImageBitmap posters are stored upside down (see loadPosterBitmap): a negative repeat around
+    // the centre flips them back.
+    if (texture.userData.flipV === true) repeatY = -repeatY;
+
     const needsUpdate =
       Math.abs(texture.repeat.x - repeatX) > 0.0001 ||
       Math.abs(texture.repeat.y - repeatY) > 0.0001 ||
@@ -1213,10 +1251,11 @@ class HomeFanWheel {
       texture.offset.y !== 0;
     if (!needsUpdate) return;
 
+    // UV transform only: three.js rebuilds texture.matrix from these each render. No needsUpdate —
+    // that re-uploads the whole texture (and re-decodes <img> posters) on every resize.
     texture.offset.set(0, 0);
     texture.repeat.set(repeatX, repeatY);
     texture.center.set(0.5, 0.5);
-    texture.needsUpdate = true;
   }
 
   private setupVideo(binding: FanBinding) {
@@ -1238,13 +1277,24 @@ class HomeFanWheel {
         startPosition: -1,
         maxBufferLength: 18,
         maxMaxBufferLength: 30,
+        autoStartLoad: false,
       });
       applyHlsQuality(hls, video, { matchElementSize: false });
       hls.loadSource(binding.item.videoSrc);
       hls.attachMedia(video);
       binding.hls = hls;
+      // Hard load: the cards are hidden under the intro, and ~10 streams opening at 1080p starved
+      // the intro's own video (measured: its first segment landed after the intro had ended). Start
+      // streaming as the intro fades; posters cover the cards until then. Barba navs: immediate.
+      waitForIntroFadeOut().then(() => {
+        if (!this.destroyed && binding.hls === hls) hls.startLoad();
+      });
     } else {
-      video.src = binding.item.videoSrc;
+      waitForIntroFadeOut().then(() => {
+        if (this.destroyed) return;
+        video.src = binding.item.videoSrc;
+        video.load();
+      });
     }
 
     binding.videoElement = video;
@@ -1341,6 +1391,7 @@ class HomeFanWheel {
 
       const dt = Math.min((time - lastTime) / 1000, 1 / 24);
       lastTime = time;
+      this.posterQueue.shift()?.();
       this.animate(dt);
       this.animationFrame = window.requestAnimationFrame(tick);
     };

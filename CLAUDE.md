@@ -110,6 +110,8 @@ three.js "fan wheel" hero on the home page. In `section` layout (content below t
 - Featured slider: only horizontal input navigates it (sideways wheel/trackpad scrolls, horizontal drags), at any scroll position. Horizontal wheel events are always claimed so the ends don't trigger browser back/forward. Vertical wheel and touch input always scroll the page. (Locked layout keeps the old any-axis wheel behavior.)
 - `prefers-reduced-motion`: wheel scroll is never captured (drags still spin). `locked` layout keeps capturing all wheel input (nothing to scroll to).
 - No global smooth-scroll lib; page scroll is native.
+- **Media loading order on a hard load (intro first impression):** the intro video downloads alone first (capped at 720p, `INTRO_VIDEO_MAX_SHORT_SIDE`; it's frosted-glass blurred throughout). `waitForIntroVideo()` (intro ready or its 1.2s timeout) gates the fan wheel posters and page-video buffering (`videoPlayer` hls `autoStartLoad: false`); the fan wheel's ~10 HLS streams wait for `waitForIntroFadeOut()`. Before this, ~11 MB (10 streams at 1080p + posters) raced the intro video, so the intro never got its video and hls.js then dropped the cards to 240p.
+- Posters decode off the main thread (`ImageBitmapLoader`; stored upside down, flipped back via negative `repeat.y` in `applyTextureCover`) and upload one per frame (`posterQueue`). `<img>` posters decoded synchronously inside the WebGL upload (30–480ms frames). `applyTextureCover` must not set `needsUpdate` (that re-uploads the texture). Cards without media yet show a flat `--base-color-brand--dark-accent` fill.
 
 ### workView (`src/features/workView.ts`)
 Manages the three list/grid UI modes on the Work page.
