@@ -74,14 +74,14 @@ let cleanupFns: Array<() => void> = [];
 
 const getNav = () => document.querySelector<HTMLElement>('.nav-unified');
 
-const getColorTargets = (nav: HTMLElement): Element[] => [
-  nav,
-  ...Array.from(
+// Only the logo (and clock) follow the page color. Nav link buttons have a solid background and
+// are styled entirely in Webflow, so they're deliberately left out.
+const getColorTargets = (nav: HTMLElement): Element[] =>
+  Array.from(
     nav.querySelectorAll(
-      '.logo-container, .logo-1, .logo-1 svg, .logo-1 svg g, .logo-1 svg path, .nav, .nav-link, .nav-link-simple, .nav-trigger, .nav-trigger-text, .nav-link-text, .nav-mobile-trigger, .nav-mobile-link, [nav-element="clock"]'
+      '.logo-container, .logo-1, .logo-1 svg, .logo-1 svg g, .logo-1 svg path, [nav-element="clock"]'
     )
-  ),
-];
+  );
 
 const getNewYorkTimeFormatter = () => {
   newYorkTimeFormatter ??= new Intl.DateTimeFormat('en-US', {
@@ -154,13 +154,6 @@ const getNamespaceTextColor = (namespace: NavNamespace | null | undefined, isAct
   if (namespace === 'cases') return isActiveBg ? TEXT_PRIMARY : TEXT_SECONDARY;
   if (namespace === 'about') return TEXT_SECONDARY;
   return TEXT_PRIMARY;
-};
-
-const getNavTone = (namespace: NavNamespace | null | undefined, isActiveBg = false) => {
-  const color = getNamespaceTextColor(namespace, isActiveBg);
-  if (color === TEXT_SECONDARY) return 'secondary';
-  if (color === LIGHT_ACCENT) return 'accent';
-  return 'primary';
 };
 
 const remToPx = (rem: number) =>
@@ -550,22 +543,9 @@ const applyNavTextState = (isActiveBg = false, immediate = false, skipVisibility
     immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : NAV_COLOR_DUR;
   const targets = getColorTargets(nav);
 
-  // Expose nav state for Webflow CSS (e.g. .nav-link-2 colors + hover states):
-  //   data-nav-page  → current barba namespace
-  //   data-nav-tone  → primary | secondary | accent (the color the logo is heading to)
-  //   --nav-text     → the logo's live color, tweened in lockstep with the logo
-  nav.dataset.navPage = activeNamespace ?? '';
-  nav.dataset.navTone = getNavTone(activeNamespace, isActiveBg);
-
   gsap.killTweensOf(targets, 'color');
   gsap.to(targets, {
     color: textColor,
-    duration,
-    ease: NAV_MOTION_EASE,
-    overwrite: 'auto',
-  });
-  gsap.to(nav, {
-    '--nav-text': textColor,
     duration,
     ease: NAV_MOTION_EASE,
     overwrite: 'auto',
