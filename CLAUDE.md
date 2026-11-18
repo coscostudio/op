@@ -85,6 +85,7 @@ Page entrances share `src/utils/entrance.ts` (`hideForEntrance` in `beforeEnter`
 - `about`: staggers blurb, services title, each `.service-card`, statement/video, featured heading, each featured card. Theme handled by transition
 - `work`: staggers `.worklist-item` (list) or grid cards (`GRID_ITEM_SELECTOR`), then `initWorkView`
 - `cases`: hero media (`.case-hero-video`) fades on its own (0.8s, no y); hero copy, sound toggle and `.case-hero-heading` children stagger
+- `404`: staggers each child of `.notfound_content` (label, h1, links). Webflow page uses the same shell as About/Work (`page-wrapper[data-barba=wrapper]` > Global Styles, `nav-unified`, `main.main-wrapper[data-barba=container]` > `.notfound-main` + `footer 2`) but no `intro` instance, so all `waitFor*` promises resolve immediately. Usually reached by a hard load (barba falls back to a full navigation when a fetch fails); its nav/links leave via barba.
 
 **`.home-blurb` special handling:**
 `.home-blurb` is `position:fixed` + `mix-blend-mode:difference` + `transition: opacity 0.2s`. Animating the parent container's opacity creates a compositing stacking context — the blend mode only resolves globally when the parent reaches `opacity:1`, causing the element to visually "pop". Fix: GSAP sets it to `opacity:0` in `beforeEnter` and fades it in independently in `afterEnter` after the container is at `opacity:1`.
@@ -99,7 +100,7 @@ Page entrances share `src/utils/entrance.ts` (`hideForEntrance` in `beforeEnter`
 
 **Status bar / page background (nav.ts `syncChromeTheme`):** sets `html[data-chrome="dark"|"light"]` from the nav's own state — `cases`: dark while the logo is light over the hero, light once the logo switches to primary (`isActiveBg`); `about`: always dark; everything else light. Enabled via `enableChromeThemeSync()` at `waitForIntroFadeOut()` (until then head CSS `html:not([data-chrome])` keeps body + intro dark). `.global-styles` maps the attribute to html/body `background-color` (0.62s `power3.in` transition to match the intro fade). In iOS Safari 26+ this only shows at scroll position 0 and in overscroll bounce areas — once scrolled, the status bar shows the page content underneath.
 
-**Pages must set** `data-barba-namespace` on their barba container: `home`, `about`, `work`, `cases`
+**Pages must set** `data-barba-namespace` on their barba container: `home`, `about`, `work`, `cases`, `404`
 
 ### homeFanWheel (`src/features/homeFanWheel.ts`)
 three.js "fan wheel" hero on the home page. In `section` layout (content below the hero), scroll input is split between the page and the wheel:

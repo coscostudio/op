@@ -49,6 +49,9 @@ const CASE_ENTRANCE_SELECTORS = [
   '.case-hero-heading > *',
 ];
 const CASE_HERO_MEDIA_SELECTOR = '.component-case-header-top .case-hero-video';
+
+// 404: label, statement, links — each direct child of the content block, in order.
+const NOT_FOUND_ENTRANCE_SELECTORS = ['.notfound_content > *'];
 const CASE_HERO_MEDIA_FADE = 0.8;
 
 /** Items stagger in the order the selectors are listed (document order within each one). */
@@ -224,6 +227,25 @@ export const barbaViews = [
       destroyCaseSliders();
       destroyRenderToReality();
       destroyPageVideoPlayers();
+    },
+  },
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // 404 — Webflow's not-found page. Usually a hard load (barba falls back to a full
+  // navigation when a fetch fails); its nav/links then navigate out via barba.
+  // No intro on this page, so waitForPageReveal() resolves immediately.
+  // ────────────────────────────────────────────────────────────────────────────
+  {
+    namespace: '404',
+
+    beforeEnter({ next }: Pick<ViewData, 'next'>) {
+      hideForEntrance(getEntranceItems(next.container, NOT_FOUND_ENTRANCE_SELECTORS));
+    },
+
+    afterEnter({ next }: Pick<ViewData, 'next'>) {
+      waitForPageReveal().then(() =>
+        playEntrance(getEntranceItems(next.container, NOT_FOUND_ENTRANCE_SELECTORS))
+      );
     },
   },
 ];
