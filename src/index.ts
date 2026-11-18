@@ -2,7 +2,6 @@ import barba from '@barba/core';
 import gsap from 'gsap';
 
 import { hideForEntrance, playEntrance } from '$utils/entrance';
-import { greetUser } from '$utils/greet';
 
 import { fadeTransition, patchMainWrapperCSS, updateBodyTheme } from './features/barbaTransitions';
 import { barbaViews } from './features/barbaViews';
@@ -37,8 +36,6 @@ window.Webflow ||= [];
 window.Webflow.push(() => {
   initMobileNav();
   initNavClock();
-
-  greetUser('John Doe');
 
   // Strip any display:none or opacity:0 !important Webflow injects on .main-wrapper.
   patchMainWrapperCSS();

@@ -53,7 +53,8 @@ src/
     videoPlayer.ts            # HLS.js video player for .home-project-card elements
     nav.ts                    # Nav w--current state sync after barba page transitions
   utils/
-    greet.ts                  # Console greeting with last publish date (Finsweet ts-utils)
+    entrance.ts               # Shared page-entrance stagger (hideForEntrance / playEntrance)
+    hlsQuality.ts             # Shared hls.js quality config + rendition caps
 bin/
   build.js                    # esbuild config (entry points, dev server, live reload)
   dev-tunnel.js               # Dev tunnel helper
