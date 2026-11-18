@@ -119,6 +119,9 @@ const CONFIG = {
   scrollTopThreshold: 8,
   // Wheel events closer together than this belong to one gesture (incl. trackpad momentum).
   wheelGestureGapMs: 180,
+  // Vertical wheel/trackpad scrolling turns the wheel like a drag on the side the pointer is on.
+  // Within this many px of the centre line the side of the previous gesture is kept.
+  wheelSideDeadzonePx: 24,
 
   // ── Page-entrance reveal (same timing as the Work list stagger) ───────────
   // Cards fade up one after another, starting with the front card and going around the wheel.
@@ -711,6 +714,10 @@ class HomeFanWheel {
   private readonly isSectionLayout: boolean;
   private lastWheelEventTime = -Infinity;
   private wheelGestureMode: WheelGestureMode | null = null;
+  // Side of the wheel's centre (+1 right, -1 left) the current wheel gesture started on. Starts
+  // on the left, which is how vertical scrolling spun before it became side-aware.
+  private wheelSide: 1 | -1 = -1;
+  private wheelSideGestureTime = -Infinity;
   private touchGesture: TouchGesture | null = null;
 
   private readonly handlePointerMove = this.onPointerMove.bind(this);
@@ -2223,6 +2230,27 @@ class HomeFanWheel {
     return this.isWithinInteractionBounds(event.clientX, event.clientY);
   }
 
+  /**
+   * Vertical scroll acts like dragging the wheel at the pointer: scrolling up = dragging down
+   * (same as a finger-down touch at the top of the page), so it spins one way right of the centre
+   * and the other way left of it — matching circular drags (see getWheelPointerAngle). The side is
+   * locked per gesture so trackpad momentum doesn't flip direction if the cursor drifts. Horizontal
+   * scrolling is unchanged.
+   */
+  private getWheelSpinDelta(event: WheelEvent, isVertical: boolean, deltaPixels: number) {
+    if (!isVertical) return deltaPixels;
+
+    const now = performance.now();
+    if (now - this.wheelSideGestureTime > CONFIG.wheelGestureGapMs) {
+      const bounds = this.stage.getBoundingClientRect();
+      const offsetX = event.clientX - bounds.left - bounds.width / 2;
+      if (Math.abs(offsetX) > CONFIG.wheelSideDeadzonePx) this.wheelSide = offsetX > 0 ? 1 : -1;
+    }
+    this.wheelSideGestureTime = now;
+
+    return -deltaPixels * this.wheelSide;
+  }
+
   private getWheelDelta(event: WheelEvent) {
     const isVertical = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
     const delta = isVertical ? event.deltaY : event.deltaX;
@@ -2267,7 +2295,7 @@ class HomeFanWheel {
       : 1 / 60;
     this.lastWheelInputTime = now;
     if (deltaPixels !== 0) this.setHovered(null);
-    this.applyWheelInput(deltaPixels, deltaTime);
+    this.applyWheelInput(this.getWheelSpinDelta(event, isVertical, deltaPixels), deltaTime);
   }
 
   private resolveWheelGestureMode(event: WheelEvent): WheelGestureMode {
@@ -2293,14 +2321,14 @@ class HomeFanWheel {
     event.preventDefault();
     if (this.isPointerDown && this.isWheelDragging) return;
 
-    const { deltaPixels } = this.getWheelDelta(event);
+    const { isVertical, deltaPixels } = this.getWheelDelta(event);
     const now = performance.now();
     const deltaTime = this.lastWheelInputTime
       ? clamp((now - this.lastWheelInputTime) / 1000, 1 / 120, 0.08)
       : 1 / 60;
     this.lastWheelInputTime = now;
     if (deltaPixels !== 0) this.setHovered(null);
-    this.applyWheelInput(deltaPixels, deltaTime);
+    this.applyWheelInput(this.getWheelSpinDelta(event, isVertical, deltaPixels), deltaTime);
   }
 
   /**
