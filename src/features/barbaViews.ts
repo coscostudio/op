@@ -36,8 +36,8 @@ const ABOUT_ENTRANCE_SELECTORS = [
   '.top-projects-card',
 ];
 
-// Home: the fan wheel cards stagger in WebGL (revealHomeFanWheel); these DOM blocks run the
-// same stagger alongside. .activecard-details is left out: the fan wheel owns its visibility.
+// Home: the fan wheel cards fade in together (revealHomeFanWheel); these DOM blocks run the
+// page stagger alongside. .activecard-details is left out: the fan wheel owns its visibility.
 const HOME_ENTRANCE_SELECTORS = ['.home-blurb-v3', '.section_about-video'];
 
 // Case study: hero copy + the content just below it. The hero media is the section's
@@ -103,7 +103,7 @@ export const barbaViews = [
       waitForPageReveal().then(() => {
         playEntrance(getEntranceItems(next.container, HOME_ENTRANCE_SELECTORS));
       });
-      // The cards wait until the intro overlay is fully gone (hard load) so the whole stagger is
+      // The cards wait until the intro overlay is fully gone (hard load) so the whole fade is
       // visible rather than starting under the fading overlay. Barba navs: resolves immediately.
       waitForIntro().then(() => revealHomeFanWheel());
 

@@ -123,13 +123,10 @@ const CONFIG = {
   // Within this many px of the centre line the side of the previous gesture is kept.
   wheelSideDeadzonePx: 24,
 
-  // ── Page-entrance reveal (same timing as the Work list stagger) ───────────
-  // Cards fade up one after another, starting with the front card and going around the wheel.
-  revealDuration: 0.36,
-  revealStagger: 0.055,
-  revealEase: 'power2.out',
-  // Start offset below the resting position, as a fraction of the card height (~16px on desktop).
-  revealYRatio: 0.08,
+  // ── Page-entrance reveal ─────────────────────────────────────────────────
+  // The whole canvas fades in at once via a CSS opacity transition (see injected styles), which
+  // runs on the compositor: it stays smooth even while the card streams start up on the main thread.
+  revealDurationMs: 500,
 
   // Card corner radius in screen px (matches the 3px radius on the site's other media).
   cornerRadiusPx: 3,
@@ -175,8 +172,6 @@ type FanBinding = {
   isVideoReady: boolean;
   isVideoPlayPending: boolean;
   lastVideoPlayAttempt: number;
-  /** 0 → 1 page-entrance progress, tweened by reveal(). */
-  reveal: { value: number };
   /** Corner radius in UV units (x, y), kept at CONFIG.cornerRadiusPx on screen each frame. */
   cornerRadius: Vector2;
 };
@@ -610,6 +605,12 @@ const injectFanStyles = () => {
       width: 100% !important;
       height: 100% !important;
       outline: none;
+      opacity: 0;
+    }
+
+    .home-fan-wheel__stage.is-revealed canvas {
+      opacity: 1;
+      transition: opacity ${CONFIG.revealDurationMs}ms cubic-bezier(0.33, 1, 0.68, 1);
     }
 
   `;
@@ -1106,7 +1107,7 @@ class HomeFanWheel {
         color: 0xffffff,
         side: DoubleSide,
         transparent: true,
-        opacity: 0,
+        opacity: 1,
         depthWrite: false,
         alphaTest: 0.001,
       });
@@ -1132,7 +1133,6 @@ class HomeFanWheel {
         isVideoReady: false,
         isVideoPlayPending: false,
         lastVideoPlayAttempt: 0,
-        reveal: { value: 0 },
         cornerRadius,
       };
 
@@ -1343,7 +1343,6 @@ class HomeFanWheel {
     gsap.killTweensOf(binding.mesh.rotation);
     gsap.killTweensOf(binding.mesh.scale);
     gsap.killTweensOf(binding.material);
-    gsap.killTweensOf(binding.reveal);
     binding.hls?.destroy();
     binding.videoElement?.pause();
     binding.videoElement?.removeAttribute('src');
@@ -1407,41 +1406,13 @@ class HomeFanWheel {
   }
 
   /**
-   * Page entrance: cards stay hidden from init until this runs (called by the home view once the
-   * page is revealed), then fade up in a stagger starting with the front card.
+   * Page entrance: the canvas stays hidden from init until this runs (called by the home view once
+   * the page is revealed), then all cards fade in together (CSS transition on the canvas).
    */
   public reveal() {
     if (this.revealStarted || this.destroyed) return;
     this.revealStarted = true;
-    if (!this.bindings.length) return;
-
-    const front = this.bindings.reduce((best, binding) =>
-      Math.sin(binding.theta) > Math.sin(best.theta) ? binding : best
-    );
-    const ordered = [...this.bindings.slice(front.index), ...this.bindings.slice(0, front.index)];
-
-    gsap.to(
-      ordered.map((binding) => binding.reveal),
-      {
-        value: 1,
-        duration: CONFIG.revealDuration,
-        ease: CONFIG.revealEase,
-        stagger: CONFIG.revealStagger,
-      }
-    );
-
-    if (!this.prefersReducedMotion) {
-      this.currentSpeed = CONFIG.idleSpeed * 2.8;
-    }
-  }
-
-  /** Jump to the end of the entrance (e.g. the user opens the featured slider mid-reveal). */
-  private completeReveal() {
-    this.revealStarted = true;
-    this.bindings.forEach((binding) => {
-      gsap.killTweensOf(binding.reveal);
-      binding.reveal.value = 1;
-    });
+    this.stage.classList.add('is-revealed');
   }
 
   private renderScene() {
@@ -1678,14 +1649,9 @@ class HomeFanWheel {
       const targetYOffset = isHovered ? CONFIG.hoverYOffset : 0;
       binding.hoverYOffset = lerp(binding.hoverYOffset, targetYOffset, alpha);
 
-      const reveal = binding.reveal.value;
-      const revealYOffset = this.prefersReducedMotion
-        ? 0
-        : (1 - reveal) * height * CONFIG.revealYRatio;
-
       const targetPosition = new Vector3(
         radius * Math.cos(binding.theta),
-        binding.hoverYOffset - revealYOffset,
+        binding.hoverYOffset,
         radius * Math.sin(binding.theta)
       );
 
@@ -1701,9 +1667,8 @@ class HomeFanWheel {
         lerp(binding.mesh.scale.y, height * targetScale, alpha),
         1
       );
-      // While revealing, opacity follows the entrance tween exactly; afterwards it eases back to 1
-      // (e.g. after returning from the featured slider).
-      binding.material.opacity = reveal < 1 ? reveal : lerp(binding.material.opacity, 1, alpha);
+      // Eases back to 1 after the featured slider dims the other cards.
+      binding.material.opacity = lerp(binding.material.opacity, 1, alpha);
       binding.mesh.renderOrder = Math.round((binding.mesh.position.z + radius) * 100);
     });
   }
@@ -1752,7 +1717,7 @@ class HomeFanWheel {
 
   private enterFeatured(index: number) {
     if (this.isTransitioning || !this.bindings.length) return;
-    this.completeReveal();
+    this.reveal();
 
     this.isTransitioning = true;
     this.state = 'FEATURED_SLIDER';
@@ -2606,7 +2571,7 @@ export const refreshHomeFanWheel = () => {
   homeFanWheelInstances.forEach((instance) => instance.refresh());
 };
 
-/** Starts the card entrance stagger (home view, once the page is revealed). */
+/** Fades all cards in together (home view, once the page is revealed). */
 export const revealHomeFanWheel = () => {
   homeFanWheelInstances.forEach((instance) => instance.reveal());
 };
