@@ -127,6 +127,17 @@ const CONFIG = {
   // The whole canvas fades in at once via a CSS opacity transition (see injected styles), which
   // runs on the compositor: it stays smooth even while the card streams start up on the main thread.
   revealDurationMs: 500,
+  // …while rising into place from this far below (also a compositor transform on the canvas).
+  // Scales with the viewport (the wheel fills most of it) and outlasts the fade, so the rise is
+  // still visibly moving once the canvas is opaque rather than finishing while it's transparent.
+  // Kept short: a slow drift gets lost next to the entry spin.
+  revealRise: 'clamp(40px, 8vh, 80px)',
+  revealRiseDurationMs: 750,
+  // Entry spin: on reveal the wheel spins as if it had just been flicked and coasts down to idle.
+  // Extra speed (rad/s) on top of idle, eased to 0 over the duration (≈ a quarter turn in total).
+  entrySpinSpeed: 2.6,
+  entrySpinDuration: 2.4,
+  entrySpinEase: 'power3.out',
 
   // Card corner radius in screen px (matches the 3px radius on the site's other media).
   cornerRadiusPx: 3,
@@ -606,11 +617,21 @@ const injectFanStyles = () => {
       height: 100% !important;
       outline: none;
       opacity: 0;
+      transform: translate3d(0, ${CONFIG.revealRise}, 0);
     }
 
     .home-fan-wheel__stage.is-revealed canvas {
       opacity: 1;
-      transition: opacity ${CONFIG.revealDurationMs}ms cubic-bezier(0.33, 1, 0.68, 1);
+      transform: none;
+      transition:
+        opacity ${CONFIG.revealDurationMs}ms cubic-bezier(0.33, 1, 0.68, 1),
+        transform ${CONFIG.revealRiseDurationMs}ms cubic-bezier(0.33, 1, 0.68, 1);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .home-fan-wheel__stage canvas {
+        transform: none;
+      }
     }
 
   `;
@@ -687,6 +708,8 @@ class HomeFanWheel {
   private baseAngle = HALF_PI;
   private spinDirection = 1;
   private currentSpeed = 0;
+  /** Extra spin speed from the entrance, tweened from CONFIG.entrySpinSpeed to 0 by reveal(). */
+  private entrySpin = { speed: 0 };
   private targetSpeed = CONFIG.idleSpeed;
   private hovered: FanBinding | null = null;
   private frontActive: FanBinding | null = null;
@@ -815,6 +838,7 @@ class HomeFanWheel {
   public destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    gsap.killTweensOf(this.entrySpin);
     // Still-queued posters dispose themselves (and close their ImageBitmaps) once destroyed.
     this.posterQueue.splice(0).forEach((applyPoster) => applyPoster());
 
@@ -1413,6 +1437,19 @@ class HomeFanWheel {
     if (this.revealStarted || this.destroyed) return;
     this.revealStarted = true;
     this.stage.classList.add('is-revealed');
+
+    if (this.prefersReducedMotion) return;
+    gsap.fromTo(
+      this.entrySpin,
+      { speed: CONFIG.entrySpinSpeed },
+      { speed: 0, duration: CONFIG.entrySpinDuration, ease: CONFIG.entrySpinEase }
+    );
+  }
+
+  /** The visitor took over (drag, scroll spin, featured slider): drop the remaining entry spin. */
+  private cancelEntrySpin() {
+    gsap.killTweensOf(this.entrySpin);
+    this.entrySpin.speed = 0;
   }
 
   private renderScene() {
@@ -1471,7 +1508,8 @@ class HomeFanWheel {
         -CONFIG.maxSpinSpeed,
         CONFIG.maxSpinSpeed
       );
-      this.baseAngle += this.currentSpeed * dt;
+      const entrySpeed = this.spinDirection * this.entrySpin.speed * spinMultiplier;
+      this.baseAngle += (this.currentSpeed + entrySpeed) * dt;
     }
     this.updateRadialBaseTransforms();
     this.applyRadialTransforms(0.16);
@@ -1594,6 +1632,7 @@ class HomeFanWheel {
     const boundedAngleDelta = clamp(angleDelta, -maxAngleStep, maxAngleStep);
     if (!boundedAngleDelta) return;
 
+    this.cancelEntrySpin();
     this.baseAngle += boundedAngleDelta;
     this.spinDirection = Math.sign(boundedAngleDelta);
     const inputSpeed = clamp(
@@ -1728,6 +1767,7 @@ class HomeFanWheel {
     this.hovered = null;
     this.currentSpeed = 0;
     this.targetSpeed = 0;
+    this.cancelEntrySpin();
     this.root.classList.add('is-featured');
     this.setFeaturedDetailsVisible(true);
     this.stage.classList.remove('is-hovering', 'is-linking', 'is-dragging');
@@ -2026,6 +2066,7 @@ class HomeFanWheel {
     if (this.isWheelDragging) {
       this.setHovered(null);
       this.currentSpeed = 0;
+      this.cancelEntrySpin();
     } else if (this.state === 'FEATURED_SLIDER') {
       this.layoutTween?.kill();
       this.layoutTween = null;
