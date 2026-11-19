@@ -628,7 +628,9 @@ const injectFanStyles = () => {
         transform ${CONFIG.revealRiseDurationMs}ms cubic-bezier(0.33, 1, 0.68, 1);
     }
 
-    @media (prefers-reduced-motion: reduce) {
+    /* No rise on touch devices: on iPhone the CSS transform (animated by Safari separately from
+       the WebGL content being redrawn every frame) looked glitchy. They keep the fade + spin. */
+    @media (prefers-reduced-motion: reduce), (hover: none) and (pointer: coarse) {
       .home-fan-wheel__stage canvas {
         transform: none;
       }

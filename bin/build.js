@@ -26,6 +26,13 @@ const context = await esbuild.context({
   define: {
     SERVE_ORIGIN: JSON.stringify(SERVE_ORIGIN),
   },
+  // hls.js' ESM build (the package's default for `import`) ships without its Web Worker, so without
+  // a `workerPath` every stream's segment transmuxing ran on the main thread (20–45ms per segment
+  // on a throttled phone profile, stalling the fan wheel as its ~10 streams start). The UMD build
+  // embeds the worker and starts it from a blob URL.
+  alias: {
+    'hls.js': 'hls.js/dist/hls.js',
+  },
 });
 
 // Build files in prod
