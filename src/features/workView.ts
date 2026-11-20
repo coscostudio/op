@@ -426,7 +426,7 @@ function toGrid() {
 // Required CSS in Webflow .global-styles embed:
 //   .worklist-cursor-card { position:fixed; width:320px; height:220px; top:0; left:0;
 //     overflow:hidden; background-size:cover; background-position:center;
-//     border-radius:4px; pointer-events:none; z-index:100;
+//     border-radius:3px; pointer-events:none; z-index:100;
 //     will-change:transform,opacity; }
 //   .worklist-cursor-card video { width:100%; height:100%; object-fit:cover;
 //     display:block; }
@@ -526,6 +526,34 @@ function preloadHoverImages(urls: string[]) {
   }
 }
 
+// The card's top-left sits on the cursor, but is kept this far inside the viewport, so near the
+// right/bottom edge it stops instead of going off-screen (the cursor then moves over it).
+const CURSOR_CARD_EDGE_GAP = 16;
+let cursorCardWidth = 0;
+let cursorCardHeight = 0;
+let cursorCardResizeObserver: ResizeObserver | null = null;
+
+/** Card position for a mouse position, clamped to the viewport. */
+function getCursorCardTarget(mouseX: number, mouseY: number) {
+  const { clientWidth, clientHeight } = document.documentElement; // excludes the scrollbar
+  const maxX = clientWidth - cursorCardWidth - CURSOR_CARD_EDGE_GAP;
+  const maxY = clientHeight - cursorCardHeight - CURSOR_CARD_EDGE_GAP;
+  return {
+    x: Math.max(CURSOR_CARD_EDGE_GAP, Math.min(mouseX, maxX)),
+    y: Math.max(CURSOR_CARD_EDGE_GAP, Math.min(mouseY, maxY)),
+  };
+}
+
+function moveCursorCard() {
+  const { x, y } = getCursorCardTarget(lastMouseX, lastMouseY);
+  cursorXTo?.(x);
+  cursorYTo?.(y);
+}
+
+// Only the reveal/hide props: a plain killTweensOf(card) also killed the quickTo x/y tweens, so
+// once the card had faded in it stayed frozen where the mouse first entered the row.
+const CURSOR_CARD_FADE_PROPS = 'opacity,visibility,scale';
+
 function initCursorCard() {
   cursorCard = document.createElement('div');
   cursorCard.className = 'worklist-cursor-card';
@@ -542,15 +570,25 @@ function initCursorCard() {
   document.body.appendChild(cursorCard);
   cursorXTo = gsap.quickTo(cursorCard, 'x', { duration: 0.45, ease: 'power3' });
   cursorYTo = gsap.quickTo(cursorCard, 'y', { duration: 0.45, ease: 'power3' });
+
+  // Size comes from .global-styles (and may change per breakpoint); offset sizes ignore the
+  // reveal's scale transform.
+  const card = cursorCard;
+  const measure = () => {
+    cursorCardWidth = card.offsetWidth;
+    cursorCardHeight = card.offsetHeight;
+  };
+  measure();
+  cursorCardResizeObserver = new ResizeObserver(measure);
+  cursorCardResizeObserver.observe(card);
 }
 
 function snapCursorCardToMouse() {
-  if (!cursorCard) return;
-  gsap.set(cursorCard, { x: lastMouseX, y: lastMouseY });
-  // Reinitialize quickTo from the snapped position so subsequent moves
-  // tween correctly instead of from a stale internal value.
-  cursorXTo = gsap.quickTo(cursorCard, 'x', { duration: 0.45, ease: 'power3' });
-  cursorYTo = gsap.quickTo(cursorCard, 'y', { duration: 0.45, ease: 'power3' });
+  const { x, y } = getCursorCardTarget(lastMouseX, lastMouseY);
+  // quickTo's second argument is the start value: jump straight there instead of sliding over
+  // from the previous row's position.
+  cursorXTo?.(x, x);
+  cursorYTo?.(y, y);
 }
 
 function loadCursorVideo(url: string) {
@@ -592,7 +630,7 @@ function resetCursorMedia() {
 
 function showCursorCard() {
   if (!cursorCard) return;
-  gsap.killTweensOf(cursorCard);
+  gsap.killTweensOf(cursorCard, CURSOR_CARD_FADE_PROPS);
   gsap.set(cursorCard, { visibility: 'visible' });
   gsap.to(cursorCard, {
     autoAlpha: 1,
@@ -605,7 +643,7 @@ function showCursorCard() {
 
 function hideCursorCard(immediate = false) {
   if (!cursorCard) return;
-  gsap.killTweensOf(cursorCard);
+  gsap.killTweensOf(cursorCard, CURSOR_CARD_FADE_PROPS);
   resetCursorMedia();
 
   if (immediate) {
@@ -627,6 +665,9 @@ function destroyCursorCard() {
   if (cursorVideo) {
     cursorVideo = null;
   }
+  cursorCardResizeObserver?.disconnect();
+  cursorCardResizeObserver = null;
+  if (cursorCard) gsap.killTweensOf(cursorCard);
   cursorCard?.remove();
   cursorCard = null;
   cursorXTo = null;
@@ -719,8 +760,7 @@ export function initWorkView(pageContainer: HTMLElement) {
   const onMouseMove = (e: MouseEvent) => {
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
-    cursorXTo?.(e.clientX);
-    cursorYTo?.(e.clientY);
+    moveCursorCard();
   };
   document.addEventListener('mousemove', onMouseMove);
 
